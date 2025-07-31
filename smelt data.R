@@ -35,10 +35,27 @@ surv_salvage <- surv %>%
 fish_smelt <- fish %>%
   filter(Taxa %in% c("Hypomesus transpacificus"))
 
+fish_shad =  fish %>%
+  filter(Taxa %in% c("Alosa sapidissima"))
+
+
+fish_splitts =  fish %>%
+  filter(Taxa %in% c("Pogonichthys macrolepidotus"))
+
+fish_stripers = fish %>%
+  filter(Taxa %in% "Morone saxatilis")
 
 # do a join and collect_data the resulting data frame
 # collect_data executes the sql query, converts Date and Datetime columns to the correct format and timezone, and gives you a table
 df <- left_join(surv_salvage, fish_smelt) %>%
+  collect_data()
+
+dfsplits <- left_join(surv_salvage, fish_splitts) %>%
+  collect_data()
+dfshad = left_join(surv_salvage, fish_shad) %>%
+  collect_data()
+
+dfstripers = left_join(surv_salvage, fish_stripers) %>%
   collect_data()
 
 dfskt <- left_join(surv_skt, fish_smelt) %>%
@@ -48,6 +65,8 @@ dffmwt <- left_join(surv_fmwt, fish_smelt) %>%
   collect_data()
 # close connection to database
 close_database(con)
+
+save(df, dfsplits, dfshad, dfstripers, dfskt, dffmwt, file = "data/fishdata.RData")
 
 ###########plot salvage#############
 ggplot(df, aes(x = Date, y = Count, color = Station)) + geom_line()
@@ -86,6 +105,53 @@ group_by(Date) %>%
   ungroup()
 
 
+shad2 = dfshad%>%
+  filter(Station != "SWP NA") %>%
+  group_by(Date) %>%
+  summarise(smelt = sum(Count)) %>% #i'm not sure if this should be sum or mean.
+  mutate(DOY = yday(Date),
+         WY = case_when(month(Date) %in% c(10,11,12) ~ year(Date) +1,
+                        TRUE ~ year(Date)),
+         DOWY = case_when(month(Date) %in% c(10,11,12) ~ DOY -273,
+                          TRUE ~ DOY + 92)) %>%
+  group_by(WY) %>%
+  mutate(MeanSmelt = rollmean(smelt, 8, na.pad = T),
+         ROC = MeanSmelt - lag(MeanSmelt)) %>% #calculate rate of change to find start of peak?
+  ungroup()
+
+stripers2 = dfstripers%>%
+  filter(Station != "SWP NA") %>%
+  group_by(Date) %>%
+  summarise(smelt = sum(Count)) %>% #i'm not sure if this should be sum or mean.
+  mutate(DOY = yday(Date),
+         WY = case_when(month(Date) %in% c(10,11,12) ~ year(Date) +1,
+                        TRUE ~ year(Date)),
+         DOWY = case_when(month(Date) %in% c(10,11,12) ~ DOY -273,
+                          TRUE ~ DOY + 92)) %>%
+  group_by(WY) %>%
+  mutate(MeanSmelt = rollmean(smelt, 8, na.pad = T),
+         ROC = MeanSmelt - lag(MeanSmelt)) %>% #calculate rate of change to find start of peak?
+  ungroup() %>%
+  left_join(Dayflow) %>%
+  left_join(OMR)
+
+splits2 = dfsplits%>%
+  filter(Station != "SWP NA") %>%
+  group_by(Date) %>%
+  summarise(smelt = sum(Count)) %>% #i'm not sure if this should be sum or mean.
+  mutate(DOY = yday(Date),
+         WY = case_when(month(Date) %in% c(10,11,12) ~ year(Date) +1,
+                        TRUE ~ year(Date)),
+         DOWY = case_when(month(Date) %in% c(10,11,12) ~ DOY -273,
+                          TRUE ~ DOY + 92)) %>%
+  group_by(WY) %>%
+  mutate(MeanSmelt = rollmean(smelt, 8, na.pad = T),
+         ROC = MeanSmelt - lag(MeanSmelt)) %>% #calculate rate of change to find start of peak?
+  ungroup() %>%
+  left_join(Dayflow) %>%
+  left_join(OMR)
+
+
 #now we need turbidity and flow
 load("Dayflow.RData")
 OMR = cdec_query("OMR", 41, start.date = ymd("2001-01-01"), end.date = today()) %>%
@@ -95,6 +161,9 @@ OMR = cdec_query("OMR", 41, start.date = ymd("2001-01-01"), end.date = today()) 
 smelt2 = left_join(smelt2, Dayflow) %>%
   left_join(OMR)
 
+shad2 = left_join(shad2, Dayflow) %>%
+  left_join(OMR)
+
 ggplot(smelt2, aes(x = OMR, y = ROC)) + geom_point()+ geom_smooth()
 
 #OK, what if I scale and center flow and smelt....
@@ -102,19 +171,48 @@ ggplot(smelt2, aes(x = OMR, y = ROC)) + geom_point()+ geom_smooth()
 smelt3 = smelt2 %>%
   filter(WY < 2012, DOWY <200) %>%
   mutate(MeanSmeltC = scale(MeanSmelt),
-                OUTc = scale(OUT), OMRc = scale(OMR))
+                OUTc = scale(OUT), OMRc = scale(OMR),
+         Taxa = "Delta Smelt")
 
-ggplot(smelt3, aes(x = DOWY, y = MeanSmeltC))+
-  geom_line(color = "red")+
+shad3 = shad2 %>%
+  filter(WY < 2012, DOWY <200) %>%
+  mutate(MeanSmeltC = scale(MeanSmelt),
+         OUTc = scale(OUT), OMRc = scale(OMR),
+         Taxa = "American Shad")
+
+stripers3 = stripers2 %>%
+  filter(WY < 2012, DOWY <200) %>%
+  mutate(MeanSmeltC = scale(MeanSmelt),
+         OUTc = scale(OUT), OMRc = scale(OMR),
+         Taxa = "Striped bass")
+
+splits3 = splits2 %>%
+  filter(WY < 2012, DOWY <200) %>%
+  mutate(MeanSmeltC = scale(MeanSmelt),
+         OUTc = scale(OUT), OMRc = scale(OMR),
+         Taxa = "Splittail")
+
+fish3 = bind_rows(smelt3, shad3, stripers3, splits3)
+
+ggplot(fish3, aes(x = DOWY, y = MeanSmeltC, color = Taxa))+
+  geom_line()+
   geom_line(aes(y = OUTc), color = "black")+
-  geom_line(aes(y = OMRc), color = "blue")+
-  facet_wrap(~WY)
+  facet_wrap(~WY, scales = "free_y")
 
 
 ggplot(smelt3, aes(x = DOWY, y = MeanSmeltC))+
   geom_line(color = "black")+
   geom_line(aes(y = OUTc), color = "blue")+
   facet_wrap(~WY, scales = "free_y")
+
+ggplot(smelt3, aes(x = DOWY, y = MeanSmeltC))+
+  geom_line(color = "black")+
+  geom_line(data = shad3, color = "green")+
+  geom_line(data = stripers3, color = "orange")+
+  geom_line(aes(y = OUTc), color = "blue")+
+  facet_wrap(~WY, scales = "free_y")
+
+
 
 #########smelt distribution###############
 #i guess I'll put the FMWT and SKT data together and calculate the center of distribution
