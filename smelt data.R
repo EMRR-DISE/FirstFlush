@@ -87,7 +87,7 @@ group_by(Date) %>%
 
 
 #now we need turbidity and flow
-load("C:/Users/rhartman/OneDrive - California Department of Water Resources/salinity control gates/SFHA_synthesis/data/dayflow_w2024.RData")
+load("Dayflow.RData")
 OMR = cdec_query("OMR", 41, start.date = ymd("2001-01-01"), end.date = today()) %>%
   mutate(Date = date(ObsDate)) %>%
   select(Date, Value) %>%
@@ -147,4 +147,6 @@ ggplot(smeltdist, aes(y = MeanLat, x = MeanLong, color = DOWY)) + geom_point()+
 
 ggplot(smeltdist, aes(x = log(OUT), y = MeanLong, color = WY)) + geom_point()+
   scale_color_viridis_b()+
-  geom_smooth()
+  geom_smooth(method = "lm")+
+  ylab("Center of Distribution (longitude)")+
+  xlab("Outflow (log-transformed)")
