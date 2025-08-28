@@ -42,13 +42,29 @@ ggplot(Sacflow, aes(x = Date, y = SAC))+ geom_line()
 ggplot(Sacflow, aes(x = Date, y = change))+ geom_line()
 
 #there is probalby some cut off we can use to identify storms
+quantile(Sacflow$change, c(0.5, 0.8, 0.9, 0.95, 0.99), na.rm =T)
+
+#maybe just the positive vlaues
+quantile(filter(Sacflow, change>0)$change, c(0.5, 0.8, 0.9, 0.95, 0.99), na.rm =T)
+
+#start with the 95% quantile?
+
+Sacflow = mutate(Sacflow, Storm = case_when(change >=6500 ~ "STORM"))
+
+#maybe I need two days with high change or something?
+
 
 #limit it to more recent years, just to see what I'm doing better
 SacflowRecent = filter(Sacflow, Year > 2010)
-
+storms = filter(SacflowRecent, Storm == "STORM")
 ggplot()+
   geom_line(data = SacflowRecent, aes(x = Date, y = SAC))+
-  geom_line(data = filter(SacflowRecent, change >0), aes(x = Date,y = change), color = "blue")+
-  geom_hline(yintercept = 25000, color = "red", linetype =2)
+  geom_line(data = filter(SacflowRecent, change >0),
+            aes(x = Date,y = change), color = "blue")+
+  geom_hline(yintercept = 25000, color = "red", linetype =2)+
+  geom_vline(data = storms, aes(xintercept = Date), color = "chartreuse")
 
 ggsave("plots/sacflow.png", width = 20, height =8)
+
+#look at high rate of change as a way to identify storms
+
