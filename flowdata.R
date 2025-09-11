@@ -4,6 +4,7 @@
 
 library(tidyverse)
 library(dataRetrieval)
+library(zoo)
 
 #flow data only available from USGS since 2007, turbidity since 2013
 freparams = whatNWISdata(siteNumber = "11447650")
@@ -34,7 +35,7 @@ load(Dayflow.RData)
 
 #select just sac river flow
 Sacflow = select(Dayflow, Date, Year, Mo, SAC) %>%
-  mutate(change = SAC-lag(SAC)) #rate of change
+  mutate(change = SAC-lag(SAC), rollchange = rollsum(change, 2, na.pad = T)) #rate of change
 
 ggplot(Sacflow, aes(x = Date, y = SAC))+ geom_line()
 
@@ -43,13 +44,14 @@ ggplot(Sacflow, aes(x = Date, y = change))+ geom_line()
 
 #there is probalby some cut off we can use to identify storms
 quantile(Sacflow$change, c(0.5, 0.8, 0.9, 0.95, 0.99), na.rm =T)
+quantile(filter(Sacflow, rollchange>0)$rollchange, c(0.5, 0.8, 0.9, 0.95, 0.99), na.rm =T)
 
 #maybe just the positive vlaues
 quantile(filter(Sacflow, change>0)$change, c(0.5, 0.8, 0.9, 0.95, 0.99), na.rm =T)
 
 #start with the 95% quantile?
 
-Sacflow = mutate(Sacflow, Storm = case_when(change >=6500 ~ "STORM"))
+Sacflow = mutate(Sacflow, Storm = case_when(change >=6500 ~ "STORM"), Storm2 = case_when(rollchange >=12000 ~ "STORM"))
 
 #maybe I need two days with high change or something?
 
@@ -57,6 +59,7 @@ Sacflow = mutate(Sacflow, Storm = case_when(change >=6500 ~ "STORM"))
 #limit it to more recent years, just to see what I'm doing better
 SacflowRecent = filter(Sacflow, Year > 2010)
 storms = filter(SacflowRecent, Storm == "STORM")
+storms2 = filter(SacflowRecent, Storm2 == "STORM")
 ggplot()+
   geom_line(data = SacflowRecent, aes(x = Date, y = SAC))+
   geom_line(data = filter(SacflowRecent, change >0),
@@ -67,4 +70,11 @@ ggplot()+
 ggsave("plots/sacflow.png", width = 20, height =8)
 
 #look at high rate of change as a way to identify storms
+
+ggplot()+
+  geom_line(data = SacflowRecent, aes(x = Date, y = SAC))+
+  geom_line(data = filter(SacflowRecent, change >0),
+            aes(x = Date,y = change), color = "blue")+
+  geom_hline(yintercept = 25000, color = "red", linetype =2)+
+  geom_vline(data = storms2, aes(xintercept = Date), color = "chartreuse")
 
