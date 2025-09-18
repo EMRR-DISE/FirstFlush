@@ -31,11 +31,12 @@ freeport = readNWISdata(sites = "11447650", parameterCd = c("00061", "00060", "7
                         startDate = "2014-05-01T00:00", endDate = "2024-05-01T12:00", service = "iv")
 #probably easier to use dayflow for flow, just turbidity from sondes
 
-load(Dayflow.RData)
+load("Dayflow.RData")
 
 #select just sac river flow
 Sacflow = select(Dayflow, Date, Year, Mo, SAC) %>%
-  mutate(change = SAC-lag(SAC), rollchange = rollsum(change, 2, na.pad = T)) #rate of change
+  mutate(RollSac = rollmean(SAC, 5, na.pad = T),
+    change = SAC-lag(SAC), rollchange = rollsum(change, 2, na.pad = T)) #rate of change
 
 ggplot(Sacflow, aes(x = Date, y = SAC))+ geom_line()
 
@@ -51,7 +52,8 @@ quantile(filter(Sacflow, change>0)$change, c(0.5, 0.8, 0.9, 0.95, 0.99), na.rm =
 
 #start with the 95% quantile?
 
-Sacflow = mutate(Sacflow, Storm = case_when(change >=6500 ~ "STORM"), Storm2 = case_when(rollchange >=12000 ~ "STORM"))
+Sacflow = mutate(Sacflow, Storm = case_when(change >=6500 ~ "STORM"),
+                 Storm2 = case_when(rollchange >=12000 ~ "STORM"))
 
 #maybe I need two days with high change or something?
 
@@ -77,4 +79,86 @@ ggplot()+
             aes(x = Date,y = change), color = "blue")+
   geom_hline(yintercept = 25000, color = "red", linetype =2)+
   geom_vline(data = storms2, aes(xintercept = Date), color = "chartreuse")
+
+#stom options
+# 1. Sac over 25,000 - ITP requirement
+# 2. Rate of change > 6500
+# 3. Two-day change >12000
+# time interval - no more than one storme in a 7-day period or soething. Or if ROC is constanatnish it's all one storm.
+
+ggplot()+
+  geom_line(data = SacflowRecent, aes(x = Date, y = RollSac))+
+  geom_line(data = filter(SacflowRecent, change >0),
+            aes(x = Date,y = change), color = "blue")+
+  geom_hline(yintercept = 25000, color = "red", linetype =2)+
+  geom_vline(data = storms2, aes(xintercept = Date), color = "chartreuse")
+
+ggplot()+
+  geom_line(data = SacflowRecent, aes(x = Date, y = RollSac))+
+  geom_line(data = filter(SacflowRecent, change >0),
+            aes(x = Date,y = change), color = "blue")+
+  geom_hline(yintercept = 25000, color = "red", linetype =2)+
+  geom_vline(data = storms2, aes(xintercept = Date), color = "chartreuse")+
+  coord_cartesian(xlim = c(ymd("2022-10-01"), ymd("2023-06-01")))
+
+ggplot()+
+  geom_line(data = SacflowRecent, aes(x = Date, y = RollSac))+
+  geom_line(data = filter(SacflowRecent, change >0),
+            aes(x = Date,y = change), color = "blue")+
+  geom_hline(yintercept = 25000, color = "red", linetype =2)+
+  geom_vline(data = storms2, aes(xintercept = Date), color = "chartreuse")+
+  coord_cartesian(xlim = c(ymd("2018-10-01"), ymd("2019-06-01")))
+
+ggplot()+
+  geom_line(data = SacflowRecent, aes(x = Date, y = RollSac))+
+  geom_line(data = filter(SacflowRecent, change >0),
+            aes(x = Date,y = change), color = "blue")+
+  geom_hline(yintercept = 25000, color = "red", linetype =2)+
+  geom_vline(data = storms2, aes(xintercept = Date), color = "chartreuse")+
+  coord_cartesian(xlim = c(ymd("2016-10-01"), ymd("2017-06-01")))
+
+
+ggplot()+
+  geom_line(data = SacflowRecent, aes(x = Date, y = RollSac))+
+  geom_line(data = filter(SacflowRecent, change >0),
+            aes(x = Date,y = change), color = "blue")+
+  geom_hline(yintercept = 25000, color = "red", linetype =2)+
+  geom_vline(data = storms2, aes(xintercept = Date), color = "chartreuse")
+
+####################################
+#catch the first time flow is high
+
+SacStorms = SacflowRecent  %>%
+  mutate(run = with(rle(Storm), rep(seq_along(lengths), lengths))) %>%
+  group_by(run) %>%
+  mutate(N = n()) %>%
+  filter(Storm == "STORM") %>%
+  slice_head(n = 1) %>%
+  ungroup()
+
+
+
+ggplot()+
+  geom_line(data = SacflowRecent, aes(x = Date, y = SAC))+
+  geom_line(data = filter(SacflowRecent, change >0),
+            aes(x = Date,y = change), color = "blue")+
+  geom_hline(yintercept = 25000, color = "red", linetype =2)+
+  geom_vline(data = SacStorms, aes(xintercept = Date), color = "chartreuse")
+
+
+ggplot()+
+  geom_line(data = SacflowRecent, aes(x = Date, y = SAC))+
+  geom_line(data = filter(SacflowRecent, change >0),
+            aes(x = Date,y = change), color = "blue")+
+  geom_hline(yintercept = 25000, color = "red", linetype =2)+
+  geom_vline(data = SacStorms, aes(xintercept = Date), color = "chartreuse")+
+  coord_cartesian(xlim = c(ymd("2016-10-01", "2017-06-01")))
+
+ggplot()+
+  geom_line(data = SacflowRecent, aes(x = Date, y = SAC))+
+  geom_line(data = filter(SacflowRecent, change >0),
+            aes(x = Date,y = change), color = "blue")+
+  geom_hline(yintercept = 25000, color = "red", linetype =2)+
+  geom_vline(data = SacStorms, aes(xintercept = Date), color = "chartreuse")+
+  coord_cartesian(xlim = c(ymd("2022-10-01", "2023-06-01")))
 
