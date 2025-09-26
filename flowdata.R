@@ -298,7 +298,7 @@ ggplot()+
             aes(x = Date,y = change, color = "Change in Sac Flow"))+
   geom_hline(linetype =2, aes(yintercept = 25000, color = "First Flush Trigger"))+
   geom_vline(data = stormsFF, aes(xintercept = Date, color = "Storm"), alpha = 0.8)+
-  coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
+  coord_cartesian(xlim = c(ymd("2023-10-1"), ymd("2024-06-1")))+ theme_bw()+
   scale_color_manual(values = c("blue", "red", "black", "orange"))
 
 
@@ -309,8 +309,10 @@ ggplot()+
             aes(x = Date,y = change, color = "Change in Sac Flow"))+
   geom_hline(linetype =2, aes(yintercept = 25000, color = "First Flush Trigger"))+
   geom_vline(data = SacFF, aes(xintercept = Date, color = "First Flush"), alpha = 0.8)+
-  coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
-  scale_color_manual(values = c("blue", "orange", "red", "black", "orange"))
+  #coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
+  coord_cartesian(xlim = c(ymd("2023-10-1"), ymd("2024-06-1")))+ theme_bw()+
+
+    scale_color_manual(values = c("blue", "orange", "red", "black", "orange"))
 
 
 #plot showing all days with ROC >6500 - Sac only
@@ -320,7 +322,9 @@ ggplot()+
             aes(x = Date,y = change, color = "Change in Sac Flow"))+
   geom_hline(linetype =2, aes(yintercept = 25000, color = "First Flush Trigger"))+
   geom_vline(data = storms, aes(xintercept = Date, color = "Storm"), alpha = 0.8)+
-  coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
+  coord_cartesian(xlim = c(ymd("2023-10-1"), ymd("2024-06-1")))+ theme_bw()+
+
+  # coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
   scale_color_manual(values = c("blue", "red", "black", "orange"))
 
 #plot showing just the first day of ROC>6500
@@ -330,7 +334,10 @@ ggplot()+
             aes(x = Date,y = change, color = "Change in Sac Flow"))+
   geom_hline(linetype =2, aes(yintercept = 25000, color = "First Flush Trigger"))+
   geom_vline(data = SacStorms, aes(xintercept = Date, color = "Storm"), alpha = 0.8)+
-  coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
+
+  coord_cartesian(xlim = c(ymd("2023-10-1"), ymd("2024-06-1")))+ theme_bw()+
+
+   # coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
   scale_color_manual(values = c("blue", "red", "black", "orange"))
 
 #now look at Yolo +Sac flow
@@ -341,8 +348,11 @@ ggplot()+
   geom_line(data = SacflowRecent,
             aes(x = Date,y = YOLO, color = "Yolo Flow"))+
   geom_hline(linetype =2, aes(yintercept = 25000, color = "First Flush Trigger"))+
-  geom_vline(data = stormswYolo, aes(xintercept = Date, color = "Storm"), alpha = 0.8)+
-  coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
+  coord_cartesian(xlim = c(ymd("2023-10-1"), ymd("2024-06-1")),
+                  ylim = c(0, 70000 ))+ theme_bw()+
+
+   geom_vline(data = stormswYolo, aes(xintercept = Date, color = "Storm"), alpha = 0.8)+
+#  coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
   scale_color_manual(values = c("blue", "red", "black", "orange", "purple"))
 
 #look at it a slightly diffrent way
@@ -353,7 +363,10 @@ ggplot()+
             aes(x = Date,y = YSchange, color = "Change in Sac + Yolo Flow"))+
   geom_hline(linetype =2, aes(yintercept = 25000, color = "First Flush Trigger"))+
   geom_vline(data = stormswYolo, aes(xintercept = Date, color = "Storm"), alpha = 0.8)+
-  coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
+  coord_cartesian(xlim = c(ymd("2021-10-1"), ymd("2022-06-1")),
+                  ylim = c(0, 100000))+ theme_bw()+
+
+  #coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
   scale_color_manual(values = c("blue", "red", "black", "orange"))
 
 #first day Sac + yolo rate of change is high
@@ -365,7 +378,8 @@ ggplot()+
             aes(x = Date,y = YSchange, color = "Change in Sac + Yolo Flow"))+
   geom_hline(linetype =2, aes(yintercept = 25000, color = "First Flush Trigger"))+
   geom_vline(data = SacYolo, aes(xintercept = Date, color = "Storm"), alpha = 0.8)+
-  coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
+  coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")),
+                  ylim = c(0, 250000))+ theme_bw()+
   scale_color_manual(values = c("blue", "red", "black", "orange"))
 
 ###########turbidity###############################################################
@@ -378,3 +392,58 @@ ggplot()+
   geom_vline(data = stormsFFturb, aes(xintercept = Date, color = "Storm"), alpha = 0.8)+
   coord_cartesian(xlim = c(ymd("2016-10-1"), ymd("2017-06-1")))+ theme_bw()+
   scale_color_manual(values = c("blue", "red", "black", "orange"))
+
+#follow up - Use Yolo + Sac
+#Look at turbidity more
+#identify first storm
+# think about how to identify duration.
+#see whether there is a difference in early first flush versus later first flush
+#are there differences by species?
+
+#Duration ideas:
+# Length of fime before ROC goes negaive
+#number of days at a certain turbidity?
+#It's a storm-driven flow event, so back-to-back ARs count as the same.
+# STORM - Smelt Turbidity Origins Regarding MIgration
+
+#We can calculate Suspended sediment loads - but not for YOlo
+#could look at Fremont weird flow/stage instead of Dayflow data.
+
+#what other datasets do we need?
+#Delta smelt migraiton
+#longfin smelt migraiton
+#salmon migration
+#chlorophyll
+#zooplankton
+
+#Pete will start looking at fish data - Katie can help with the fish data.
+#Dave knows how to use the deltafish package, can help. Christina can also help wiht survye experties
+
+#Rosie will flag the storms from first day >6500 until ROC goes negative
+
+#Dave to look at turbidity / suspended sediment. Also Chl.
+
+#Christina can look into zooplankton data a bit.
+
+#Find hte sharepoint
+
+#FMWT and Bay study for smelt
+#Could also include salvage, but we can't rely on
+#data from before 1993 or so (for smelt).
+#DJFMP for salmon. Chipps island (also good for longfin)/sac trawl/Mossdale for when things move into the system
+#beach seine for distribution.
+#New rotory screw traps
+
+#lower trophic - EMP, all the rest of hte zoops.
+#Check out continuous sondes for chlorophyll - it might just
+#dilute immediately. Any increase will be lagged. Also need to adjust for
+#turbidity.
+
+#the oldest turbiidty is 2007
+#CC Forebay may have data back to 1988 ,but it's just one station.
+
+#look for long-term SS data on our aciton items.
+
+#How do we identify migration?
+## shifts in distribution -
+
