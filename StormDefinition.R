@@ -107,7 +107,7 @@ ggplot(filter(Sacflow_wstorms, Date >ymd("2016-10-01"), Date <ymd("2017-06-01"))
             inherit.aes = F)+ geom_line()+
   geom_vline(data = filter(Firststorms,Date > ymd("2016-10-01"), Date < ymd("2017-06-01")),
              aes(xintercept = Date), color = "blue") +
-  theme_bw()
+  theme_bw() + xlab("Date - 2017")
 
 #demo with WY 2022
 ggplot(filter(Sacflow_wstorms, Date >ymd("2021-10-01"), Date <ymd("2022-06-01")), aes(x = Date, y = YoloSac))+
@@ -116,7 +116,7 @@ ggplot(filter(Sacflow_wstorms, Date >ymd("2021-10-01"), Date <ymd("2022-06-01"))
             inherit.aes = F)+ geom_line()+
   geom_vline(data = filter(Firststorms,Date > ymd("2021-10-01"), Date < ymd("2022-06-01")),
              aes(xintercept = Date), color = "blue") +
-  theme_bw()
+  theme_bw()+ xlab("Date - 2022")
 
 #demo with WY 2024
 ggplot(filter(Sacflow_wstorms, Date >ymd("2023-10-01"), Date <ymd("2024-06-01")), aes(x = Date, y = YoloSac))+
@@ -125,4 +125,10 @@ ggplot(filter(Sacflow_wstorms, Date >ymd("2023-10-01"), Date <ymd("2024-06-01"))
             inherit.aes = F)+ geom_line()+
   geom_vline(data = filter(Firststorms,Date > ymd("2023-10-01"), Date < ymd("2024-06-01")),
              aes(xintercept = Date), color = "blue") +
-  theme_bw()
+  theme_bw()+ xlab("Date - 2024")
+
+#export storm files
+save(Sacflow_wstorms, StormStartEnd, Firststorms, file = "StormData.RData")
+
+write.csv(Sacflow_wstorms, "Sacflow_wstorms.csv", row.names = F)
+write.csv(StormStartEnd, "StormsStartEnd.csv", row.names =F)
