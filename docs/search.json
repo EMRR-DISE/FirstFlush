@@ -1,0 +1,16 @@
+[
+  {
+    "objectID": "code/cont_wq_maps.html",
+    "href": "code/cont_wq_maps.html",
+    "title": "Continuous Water Quality Station Maps",
+    "section": "",
+    "text": "Code\n# Load packages\nlibrary(tidyverse)\nlibrary(viridisLite)\nlibrary(sf)\nlibrary(mapview)\nlibrary(here)\nlibrary(conflicted)\n\n# Declare package conflict preferences\nconflicts_prefer(dplyr::filter())\n\n\n\nImport and Prepare Data\n\n\nCode\n# Import continuous WQ station coordinates\nsf_stations &lt;- read_sf(here(\"data/spatial/cont_wq_stations.shp\"))\n\n# Import continuous WQ station metadata\ndf_metadata &lt;- readRDS(here(\"data/processed/cont_wq_metadata.rds\"))\n\n# Add metadata to station coordinates\nsf_stations_c1 &lt;- sf_stations %&gt;% left_join(df_metadata, by = join_by(Source, Station_ID))\n\n\n\n\nInteractive Maps\n\n\nCode\nndf_maps &lt;- sf_stations_c1 %&gt;% \n  nest(sf_data = everything(), .by = Parameter) %&gt;% \n  arrange(Parameter) %&gt;% \n  mutate(\n    maps = map(\n      sf_data,\n      \\(x) mapview(\n        x, zcol = \"Source\", col.regions = plasma(n = 5),\n        label = \"Station_Name\", layer.name = \"Source\", cex = 5\n      )\n    )\n  )\n\n\n\nChlorophyllDissolved OxygenSpecific ConductanceSuspended Sediment ConcTurbidityWater TemperaturepH"
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "First Flush Synthesis",
+    "section": "",
+    "text": "Data Processing:\n\nInteractive Continuous WQ Map"
+  }
+]
