@@ -1,16 +1,51 @@
 [
   {
-    "objectID": "code/cont_wq_maps.html",
-    "href": "code/cont_wq_maps.html",
-    "title": "Continuous Water Quality Station Maps",
+    "objectID": "code/suspended_sediment.html",
+    "href": "code/suspended_sediment.html",
+    "title": "Suspended Sediment Data",
     "section": "",
-    "text": "Code\n# Load packages\nlibrary(tidyverse)\nlibrary(viridisLite)\nlibrary(sf)\nlibrary(mapview)\nlibrary(here)\nlibrary(conflicted)\n\n# Declare package conflict preferences\nconflicts_prefer(dplyr::filter())\n\n\n\nImport and Prepare Data\n\n\nCode\n# Import continuous WQ station coordinates\nsf_stations &lt;- read_sf(here(\"data/spatial/cont_wq_stations.shp\"))\n\n# Import continuous WQ station metadata\ndf_metadata &lt;- readRDS(here(\"data/processed/cont_wq_metadata.rds\"))\n\n# Add metadata to station coordinates\nsf_stations_c1 &lt;- sf_stations %&gt;% left_join(df_metadata, by = join_by(Source, Station_ID))\n\n\n\n\nInteractive Maps\n\n\nCode\nndf_maps &lt;- sf_stations_c1 %&gt;% \n  nest(sf_data = everything(), .by = Parameter) %&gt;% \n  arrange(Parameter) %&gt;% \n  mutate(\n    maps = map(\n      sf_data,\n      \\(x) mapview(\n        x, zcol = \"Source\", col.regions = plasma(n = 5),\n        label = \"Station_Name\", layer.name = \"Source\", cex = 5\n      )\n    )\n  )\n\n\n\nChlorophyllDissolved OxygenSpecific ConductanceSuspended Sediment ConcTurbidityWater TemperaturepH"
+    "text": "Code\n# Load packages\nlibrary(tidyverse)\nlibrary(dataRetrieval)\nlibrary(sf)\nlibrary(khroma)\nlibrary(scales)\nlibrary(here)\nlibrary(conflicted)\n\n# Declare package conflict preferences\nconflicts_prefer(dplyr::filter())\nCode\n# Create data dictionary for plot labels\nlabel_dict &lt;- c(\n  SSC = \"SSC (mg/L)\",\n  Turbidity = \"Turbidity (FNU)\",\n  Storm_cat = \"Storm Category\",\n  YoloSac = \"Sac + Yolo Flow (cfs)\"\n)"
+  },
+  {
+    "objectID": "code/suspended_sediment.html#suspended-sediment-concentration",
+    "href": "code/suspended_sediment.html#suspended-sediment-concentration",
+    "title": "Suspended Sediment Data",
+    "section": "Suspended Sediment Concentration",
+    "text": "Suspended Sediment Concentration\n\n\nCode\ndf_sac_fp_ss_c %&gt;% \n  ggplot(aes(x = Date, y = SSC)) +\n  geom_point() +\n  scale_x_date(breaks = breaks_pretty(15)) +\n  scale_y_continuous(labels = label_comma()) +\n  theme_bw() + \n  labs(\n    title = \"Sacramento River at Freeport\",\n    subtitle = \"Suspended Sediment Concentration\",\n    dictionary = label_dict\n  )"
+  },
+  {
+    "objectID": "code/suspended_sediment.html#turbidity",
+    "href": "code/suspended_sediment.html#turbidity",
+    "title": "Suspended Sediment Data",
+    "section": "Turbidity",
+    "text": "Turbidity\n\n\nCode\ndf_sac_fp_turb_avg %&gt;% \n  ggplot(aes(x = Date, y = Turbidity)) +\n  geom_point() +\n  scale_x_date(breaks = breaks_pretty(10)) +\n  theme_bw() + \n  labs(\n    title = \"Sacramento River at Freeport\",\n    subtitle = \"Turbidity\",\n    dictionary = label_dict\n  )"
+  },
+  {
+    "objectID": "code/suspended_sediment.html#suspended-sediment",
+    "href": "code/suspended_sediment.html#suspended-sediment",
+    "title": "Suspended Sediment Data",
+    "section": "Suspended Sediment",
+    "text": "Suspended Sediment\n\n\nCode\n# Combine storm data set with suspended sediment data\ndf_sac_fp_ss_storm &lt;- df_sac_fp_ss_c %&gt;% \n  left_join(df_sac_fp_storm, by = join_by(Date))\n\n\n\n\nCode\ndf_sac_fp_ss_storm %&gt;% \n  ggplot(aes(x = Storm_cat, y = SSC)) +\n  geom_boxplot() +\n  scale_y_continuous(labels = label_comma()) +\n  theme_bw() +\n  labs(\n    title = \"Sacramento River at Freeport\",\n    subtitle = \"Suspended Sediment comparison between storm categories\",\n    dictionary = label_dict\n  )\n\n\n\n\n\n\n\n\n\nCode\ndf_sac_fp_ss_storm %&gt;% \n  ggplot(aes(x = Storm_cat, y = SSC)) +\n  geom_violin(quantile.linetype = 1) +\n  scale_y_continuous(labels = label_comma()) +\n  theme_bw() +\n  labs(\n    title = \"Sacramento River at Freeport\",\n    subtitle = \"Suspended Sediment comparison between storm categories\",\n    dictionary = label_dict\n  )\n\n\n\n\n\n\n\n\n\n\n\nCode\ndf_sac_fp_ss_storm %&gt;% \n  filter(YSStorm == \"STORM\") %&gt;% \n  mutate(Storm_cat = fct_drop(Storm_cat)) %&gt;% \n  ggplot(aes(x = YoloSac, y = SSC, color = Storm_cat)) +\n  geom_point(alpha = 0.5) +\n  geom_smooth(method = \"lm\", formula = y ~ x) +\n  scale_color_highcontrast(name = \"Storm Category\") +\n  scale_x_continuous(labels = label_comma()) +\n  scale_y_continuous(labels = label_comma()) +\n  theme_bw() +\n  labs(\n    title = \"Sacramento River at Freeport\",\n    subtitle = \"Sac + Yolo Flow vs. SSC\",\n    dictionary = label_dict\n  )"
+  },
+  {
+    "objectID": "code/suspended_sediment.html#turbidity-1",
+    "href": "code/suspended_sediment.html#turbidity-1",
+    "title": "Suspended Sediment Data",
+    "section": "Turbidity",
+    "text": "Turbidity\n\n\nCode\n# Combine storm data set with turbidity data\ndf_sac_fp_turb_storm &lt;- df_sac_fp_turb_avg %&gt;% \n  left_join(df_sac_fp_storm, by = join_by(Date)) %&gt;% \n  drop_na(Storm_cat)\n\n\n\n\nCode\ndf_sac_fp_turb_storm %&gt;% \n  ggplot(aes(x = Storm_cat, y = Turbidity)) +\n  geom_boxplot() +\n  theme_bw() +\n  labs(\n    title = \"Sacramento River at Freeport\",\n    subtitle = \"Turbidity comparison between storm categories\",\n    dictionary = label_dict\n  )\n\n\n\n\n\n\n\n\n\nCode\ndf_sac_fp_turb_storm %&gt;% \n  ggplot(aes(x = Storm_cat, y = Turbidity)) +\n  geom_violin(quantile.linetype = 1) +\n  theme_bw() +\n  labs(\n    title = \"Sacramento River at Freeport\",\n    subtitle = \"Turbidity comparison between storm categories\",\n    dictionary = label_dict\n  )\n\n\n\n\n\n\n\n\n\n\n\nCode\ndf_sac_fp_turb_storm %&gt;% \n  filter(YSStorm == \"STORM\") %&gt;% \n  mutate(Storm_cat = fct_drop(Storm_cat)) %&gt;% \n  ggplot(aes(x = YoloSac, y = Turbidity, color = Storm_cat)) +\n  geom_point(alpha = 0.5) +\n  geom_smooth(method = \"lm\", formula = y ~ x) +\n  scale_color_highcontrast(name = \"Storm Category\") +\n  scale_x_continuous(labels = label_comma()) +\n  scale_y_continuous(labels = label_comma()) +\n  theme_bw() +\n  labs(\n    title = \"Sacramento River at Freeport\",\n    subtitle = \"Sac + Yolo Flow vs. Turbidity\",\n    dictionary = label_dict\n  )"
   },
   {
     "objectID": "index.html",
     "href": "index.html",
     "title": "First Flush Synthesis",
     "section": "",
-    "text": "Data Processing:\n\nInteractive Continuous WQ Map"
+    "text": "Data Exploration:\n\nInteractive Continuous WQ Map\nSR at Freeport SSC and Turbidity"
+  },
+  {
+    "objectID": "code/cont_wq_maps.html",
+    "href": "code/cont_wq_maps.html",
+    "title": "Continuous Water Quality Station Maps",
+    "section": "",
+    "text": "Code\n# Load packages\nlibrary(tidyverse)\nlibrary(viridisLite)\nlibrary(sf)\nlibrary(mapview)\nlibrary(here)\nlibrary(conflicted)\n\n# Declare package conflict preferences\nconflicts_prefer(dplyr::filter())\n\n\n\nImport and Prepare Data\n\n\nCode\n# Import continuous WQ station coordinates\nsf_stations &lt;- read_sf(here(\"data/spatial/cont_wq_stations.shp\"))\n\n# Import continuous WQ station metadata\ndf_metadata &lt;- readRDS(here(\"data/processed/cont_wq_metadata.rds\"))\n\n# Add metadata to station coordinates\nsf_stations_c1 &lt;- sf_stations %&gt;% left_join(df_metadata, by = join_by(Source, Station_ID))\n\n\n\n\nInteractive Maps\n\n\nCode\nndf_maps &lt;- sf_stations_c1 %&gt;% \n  nest(sf_data = everything(), .by = Parameter) %&gt;% \n  arrange(Parameter) %&gt;% \n  mutate(\n    maps = map(\n      sf_data,\n      \\(x) mapview(\n        x, zcol = \"Source\", col.regions = plasma(n = 5),\n        label = \"Station_Name\", layer.name = \"Source\", cex = 5\n      )\n    )\n  )\n\n\n\nChlorophyllDissolved OxygenSpecific ConductanceSuspended Sediment ConcTurbidityWater TemperaturepH"
   }
 ]
