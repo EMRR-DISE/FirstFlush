@@ -1,5 +1,7 @@
-# Retrieve, compile, and filter metadata for continuous water quality data collected in the SFE
-  # (geographical range TBD)
+# Retrieve, compile, and filter metadata for continuous water quality data collected in the SFE -
+  # legal Delta and Suisun Marsh and Bay
+# Author: Dave Bosworth
+# Contact: David.Bosworth@water.ca.gov
 
 # Load packages
 library(tidyverse)

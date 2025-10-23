@@ -4,5 +4,5 @@ title: "First Flush Synthesis"
 
 Data Exploration:
 
-* [Interactive Continuous WQ Map](code/cont_wq_maps.qmd)
-* [SR at Freeport SSC and Turbidity](code/suspended_sediment.qmd)
+* [Interactive Continuous WQ Map](code/analysis/cont_wq_maps.qmd)
+* [SR at Freeport SSC and Turbidity](code/analysis/sac_fpt_ssc_turbidity.qmd)

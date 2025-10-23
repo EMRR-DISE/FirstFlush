@@ -1,0 +1,390 @@
+---
+title: "Sacramento River at Freeport SSC and Turbidity Data"
+author: "Dave Bosworth"
+date: today
+date-format: long
+format:
+  html:
+    code-fold: true
+    code-tools: true
+execute: 
+  message: false
+  warning: false
+---
+
+```{r}
+# Load packages
+library(tidyverse)
+library(khroma)
+library(scales)
+library(labelled)
+library(car)
+library(here)
+library(conflicted)
+
+# Declare package conflict preferences
+conflicts_prefer(dplyr::filter())
+```
+
+# Import and Prepare Data
+
+```{r}
+# Daily average suspended sediment and turbidity data from the Sacramento at Freeport USGS station
+df_sac_fpt_ssc_turb <- readRDS(here("data/processed/wq/sac_fpt_ssc_turb.rds"))
+
+# Storm data set
+load(here("data/processed/storms/StormData.RData"))
+
+# Clean up Sacflow_wstorms data set
+df_sac_storm <- Sacflow_wstorms %>% 
+  mutate(
+    Storm_cat = case_when(
+      FirstStorm == "First Storm" ~ "First Storm",
+      YSStorm == "STORM" ~ "Storm, but not first",
+      Month %in% c(1, 2 ,12) ~ "No Storm, during winter",
+      .default = "No Storm, not during winter"
+    ),
+    Storm_cat = factor(
+      Storm_cat,
+      levels = c(
+        "First Storm", "Storm, but not first",
+        "No Storm, during winter", "No Storm, not during winter"
+      )
+    )
+  ) %>% 
+  set_variable_labels(Storm_cat = "Storm Category", YoloSac = "Sac + Yolo Flow (cfs)")
+
+# Combine storm data set with suspended sediment and turbidity data
+df_sac_fpt_ssc_turb_storm <- df_sac_fpt_ssc_turb %>% 
+  left_join(df_sac_storm, by = join_by(Date))
+
+ls_sac_fpt_storm <- 
+  list(
+    ssc = df_sac_fpt_ssc_turb %>% select(-Turbidity) %>% drop_na(SSC),
+    turb = df_sac_fpt_ssc_turb %>% select(-SSC) %>% drop_na(Turbidity),
+    ssc_turb = df_sac_fpt_ssc_turb %>% drop_na(SSC, Turbidity)
+  ) %>% 
+  map(\(x) left_join(x, df_sac_storm, by = join_by(Date)))
+
+```
+
+# Visualize time series
+
+## Suspended Sediment Concentration
+
+```{r}
+ls_sac_fpt_storm$ssc %>% 
+  ggplot(aes(x = Date, y = SSC)) +
+  geom_point() +
+  scale_x_date(breaks = breaks_pretty(15)) +
+  scale_y_continuous(labels = label_comma()) +
+  theme_bw() + 
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Suspended Sediment Concentration"
+  )
+```
+
+## Turbidity
+
+```{r}
+ls_sac_fpt_storm$turb %>% 
+  ggplot(aes(x = Date, y = Turbidity)) +
+  geom_point() +
+  scale_x_date(breaks = breaks_pretty(10)) +
+  theme_bw() + 
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Turbidity"
+  )
+```
+
+# Correlation between SSC and Turbidity
+
+## All Data
+
+Start with all the paired data:
+
+```{r}
+ls_sac_fpt_storm$ssc_turb %>% 
+  ggplot(aes(x = SSC, y = Turbidity)) +
+  geom_point(alpha = 0.5) +
+  theme_bw() +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "SSC vs. Turbidity, Original values, All Data"
+  )
+```
+
+Try log-log transformation:
+
+```{r}
+ls_sac_fpt_storm$ssc_turb %>% 
+  ggplot(aes(x = log(SSC), y = log(Turbidity))) +
+  geom_point(alpha = 0.5) +
+  theme_bw() +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "SSC vs. Turbidity, Log-transformed values, All Data"
+  )
+
+```
+
+The relationship between SSC and Turbidity looks much clearer with the log-transformed data. Here is a simple linear model predicting Turbidity with SSC.
+
+```{r}
+lm_sac_fpt_ssc_turb_all <- ls_sac_fpt_storm$ssc_turb %>% lm(log(Turbidity) ~ log(SSC), data = .)
+
+summary(lm_sac_fpt_ssc_turb_all)
+```
+
+## Just Storms
+
+Now restrict the correlation to just the defined storms:
+
+```{r}
+ls_sac_fpt_storm$ssc_turb %>% 
+  filter(YSStorm == "STORM") %>% 
+  ggplot(aes(x = log(SSC), y = log(Turbidity))) +
+  geom_point(alpha = 0.5) +
+  theme_bw() +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "SSC vs. Turbidity, Log-transformed values, During storms"
+  )
+```
+
+Here is a simple linear model predicting Turbidity with SSC for just the defined storm periods:
+
+```{r}
+lm_sac_fpt_ssc_turb_storm <- ls_sac_fpt_storm$ssc_turb %>% 
+  filter(YSStorm == "STORM") %>%
+  lm(log(Turbidity) ~ log(SSC), data = .)
+
+summary(lm_sac_fpt_ssc_turb_storm)
+```
+
+Now, try separating by first storm vs. all other storms:
+
+```{r}
+ls_sac_fpt_storm$ssc_turb %>% 
+  filter(YSStorm == "STORM") %>% 
+  mutate(Storm_cat = fct_drop(Storm_cat)) %>% 
+  ggplot(aes(x = log(SSC), y = log(Turbidity), color = Storm_cat)) +
+  geom_point(alpha = 0.5) +
+  scale_color_highcontrast() +
+  theme_bw() +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "SSC vs. Turbidity, Log-transformed values, During storms"
+  )
+```
+
+The slopes for each linear model appear parallel, but the First Storm intercept is higher. Let's try a linear model adding Storm Category as a fixed effect.
+
+```{r}
+lm_sac_fpt_ssc_turb_storm_cat <- ls_sac_fpt_storm$ssc_turb %>% 
+  filter(YSStorm == "STORM") %>%
+  mutate(Storm_cat = fct_drop(Storm_cat)) %>% 
+  lm(log(Turbidity) ~ log(SSC) + Storm_cat, data = .)
+
+summary(lm_sac_fpt_ssc_turb_storm_cat)
+Anova(lm_sac_fpt_ssc_turb_storm_cat, type = 2)
+```
+
+It looks like the intercept for the "Storm, but not first" category is significantly lower than the intercept for the "First Storm".
+
+## Just Winter-Early Spring
+
+Maybe restricting the correlation to just the defined storms is too restrictive. Let's try restricting the data to the months when storms are most prevalent, but include data outside of defined storms.
+
+```{r}
+df_sac_storm %>% 
+  filter(YSStorm == "STORM") %>%
+  count(Month)
+```
+
+It looks like storms are most common during December - April, so we'll use that time period.
+
+```{r}
+ls_sac_fpt_storm$ssc_turb %>% 
+  filter(Month %in% c(1:4, 12)) %>% 
+  ggplot(aes(x = log(SSC), y = log(Turbidity))) +
+  geom_point(alpha = 0.5) +
+  theme_bw() +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "SSC vs. Turbidity, Log-transformed values, December - April"
+  )
+```
+
+Here is a simple linear model predicting Turbidity with SSC for December - April data:
+
+```{r}
+lm_sac_fpt_ssc_turb_wint <- ls_sac_fpt_storm$ssc_turb %>% 
+  filter(Month %in% c(1:4, 12)) %>% 
+  lm(log(Turbidity) ~ log(SSC), data = .)
+
+summary(lm_sac_fpt_ssc_turb_wint)
+```
+
+Now, try separating by first storm vs. all other storms vs. no storm:
+
+```{r}
+ls_sac_fpt_storm$ssc_turb %>% 
+  filter(Month %in% c(1:4, 12)) %>% 
+  mutate(
+    Storm_cat = fct_collapse(
+      Storm_cat, 
+      "No Storm" = c("No Storm, during winter", "No Storm, not during winter")
+    )
+  ) %>% 
+  ggplot(aes(x = log(SSC), y = log(Turbidity), color = Storm_cat)) +
+  geom_point(alpha = 0.5) +
+  scale_color_highcontrast() +
+  theme_bw() +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "SSC vs. Turbidity, Log-transformed values, December - April"
+  )
+```
+
+The relationships between Turbidity and SSC look very similar between all data and when its restricted to December - April. Either one of these linear models would probably work well to estimate turbidity from SSC.
+
+# First Flush Analysis
+
+## Suspended Sediment Concentration
+
+```{r}
+ls_sac_fpt_storm$ssc %>% 
+  ggplot(aes(x = Storm_cat, y = SSC)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = label_comma()) +
+  theme_bw() +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Suspended Sediment comparison between storm categories"
+  )
+
+ls_sac_fpt_storm$ssc %>% 
+  ggplot(aes(x = Storm_cat, y = SSC)) +
+  geom_violin(quantile.linetype = 1) +
+  scale_y_continuous(labels = label_comma()) +
+  theme_bw() +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Suspended Sediment comparison between storm categories"
+  )
+```
+
+```{r}
+ls_sac_fpt_storm$ssc %>% 
+  filter(YSStorm == "STORM") %>% 
+  mutate(Storm_cat = fct_drop(Storm_cat)) %>% 
+  ggplot(aes(x = YoloSac, y = SSC, color = Storm_cat)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  scale_color_highcontrast(name = "Storm Category") +
+  scale_x_continuous(labels = label_comma()) +
+  scale_y_continuous(labels = label_comma()) +
+  theme_bw() +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Sac + Yolo Flow vs. SSC"
+  )
+```
+
+## Turbidity
+
+```{r}
+ls_sac_fpt_storm$turb %>% 
+  ggplot(aes(x = Storm_cat, y = Turbidity)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Turbidity comparison between storm categories"
+  )
+
+ls_sac_fpt_storm$turb %>% 
+  ggplot(aes(x = Storm_cat, y = Turbidity)) +
+  geom_violin(quantile.linetype = 1) +
+  theme_bw() +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Turbidity comparison between storm categories"
+  )
+```
+
+```{r}
+ls_sac_fpt_storm$turb %>% 
+  filter(YSStorm == "STORM") %>% 
+  mutate(Storm_cat = fct_drop(Storm_cat)) %>% 
+  ggplot(aes(x = YoloSac, y = Turbidity, color = Storm_cat)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  scale_color_highcontrast(name = "Storm Category") +
+  scale_x_continuous(labels = label_comma()) +
+  scale_y_continuous(labels = label_comma()) +
+  theme_bw() +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Sac + Yolo Flow vs. Turbidity"
+  )
+```
+
+## SSC restricted to Turbidity POR
+
+Suspended sediment concentration has a much longer period of record than Turbidity. What does this first flush analysis look like if we restricted the SSC values to the period of record for Turbidity.
+
+```{r}
+turb_por <- interval(min(ls_sac_fpt_storm$turb$Date), max(ls_sac_fpt_storm$turb$Date))
+
+df_sac_fpt_ssc_storm_rst <- ls_sac_fpt_storm$ssc %>% filter(Date %within% turb_por)
+```
+
+```{r}
+df_sac_fpt_ssc_storm_rst %>% 
+  ggplot(aes(x = Storm_cat, y = SSC)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = label_comma()) +
+  theme_bw() +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Suspended Sediment comparison between storm categories, restricted period of record"
+  )
+
+df_sac_fpt_ssc_storm_rst %>% 
+  ggplot(aes(x = Storm_cat, y = SSC)) +
+  geom_violin(quantile.linetype = 1) +
+  scale_y_continuous(labels = label_comma()) +
+  theme_bw() +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Suspended Sediment comparison between storm categories, restricted period of record"
+  )
+```
+
+```{r}
+df_sac_fpt_ssc_storm_rst %>% 
+  filter(YSStorm == "STORM") %>% 
+  mutate(Storm_cat = fct_drop(Storm_cat)) %>% 
+  ggplot(aes(x = YoloSac, y = SSC, color = Storm_cat)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  scale_color_highcontrast(name = "Storm Category") +
+  scale_x_continuous(labels = label_comma()) +
+  scale_y_continuous(labels = label_comma()) +
+  theme_bw() +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Sac + Yolo Flow vs. SSC, restricted period of record"
+  )
+```
+
