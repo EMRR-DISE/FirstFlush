@@ -66,7 +66,7 @@ dffmwt <- left_join(surv_fmwt, fish_smelt) %>%
 # close connection to database
 close_database(con)
 
-save(df, dfsplits, dfshad, dfstripers, dfskt, dffmwt, file = "data/fishdata.RData")
+save(df, dfsplits, dfshad, dfstripers, dfskt, dffmwt, file = "data/processed/fish/fishdata.RData")
 
 ###########plot salvage#############
 ggplot(df, aes(x = Date, y = Count, color = Station)) + geom_line()
@@ -153,7 +153,7 @@ splits2 = dfsplits%>%
 
 
 #now we need turbidity and flow
-load("Dayflow.RData")
+load("data/external/Dayflow.RData")
 OMR = cdec_query("OMR", 41, start.date = ymd("2001-01-01"), end.date = today()) %>%
   mutate(Date = date(ObsDate)) %>%
   select(Date, Value) %>%

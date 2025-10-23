@@ -355,9 +355,9 @@ df_meta_comb <-
 # Export combined metadata and station coordinates to be used in interactive maps
 df_meta_comb %>%
   distinct(Source, Station_ID, geometry) %>%
-  write_sf(here("data/spatial/cont_wq_stations.shp"))
+  write_sf(here("data/processed/spatial/cont_wq_stations.shp"))
 
 df_meta_comb %>%
   st_drop_geometry() %>%
-  saveRDS(here("data/processed/cont_wq_metadata.rds"))
+  saveRDS(here("data/processed/wq/cont_wq_metadata.rds"))
 

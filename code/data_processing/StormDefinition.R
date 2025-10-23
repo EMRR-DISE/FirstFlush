@@ -5,7 +5,7 @@ library(tidyverse)
 library(zoo)
 
 #the official storm dataset (for now)
-load("Dayflow.RData")
+load("data/external/Dayflow.RData")
 
 #select just the most relevent parameters
 Sacflow = select(Dayflow, Date, Year, SAC, YOLO, SJR, OUT) %>%
@@ -16,7 +16,7 @@ Sacflow = select(Dayflow, Date, Year, SAC, YOLO, SJR, OUT) %>%
 
 
 Test = select(Sacflow, Date, YSchange)
-write.csv(Test, "YSflow.csv")
+write.csv(Test, "data/interim/YSflow.csv")
 ##calculate the 95% quantile of the sac river flow
 #maybe just the positive vlaues
 quantile(filter(Sacflow, Sacchange>0)$Sacchange, c(0.5, 0.8, 0.9, 0.95, 0.99), na.rm =T)
@@ -128,7 +128,7 @@ ggplot(filter(Sacflow_wstorms, Date >ymd("2023-10-01"), Date <ymd("2024-06-01"))
   theme_bw()+ xlab("Date - 2024")
 
 #export storm files
-save(Sacflow_wstorms, StormStartEnd, Firststorms, file = "StormData.RData")
+save(Sacflow_wstorms, StormStartEnd, Firststorms, file = "data/processed/storms/StormData.RData")
 
-write.csv(Sacflow_wstorms, "Sacflow_wstorms.csv", row.names = F)
-write.csv(StormStartEnd, "StormsStartEnd.csv", row.names =F)
+write.csv(Sacflow_wstorms, "data/processed/storms/Sacflow_wstorms.csv", row.names = F)
+write.csv(StormStartEnd, "data/processed/storms/StormsStartEnd.csv", row.names =F)

@@ -33,7 +33,7 @@ freeport2 = readNWISdata(sites = "11447650", parameterCd = c("80154", "80155"),
 
 #UGH! Not working
 #i just downloaded it via the website
-FTPss = read_csv("data/FTPdaily.csv")
+FTPss = read_csv("data/external/FTPdaily.csv")
 summary(FTPss)
 #that only pulled back to 1996, but I'll figure out how to get the rest later
 
@@ -59,7 +59,7 @@ ggplot(FTPssT, aes(x = log(SS), y = log(Turbidity))) + geom_point()+ geom_smooth
 ggplot(FTPssT, aes(x = SS, y = Turbidity)) + geom_point()+ geom_smooth()
 
 #start with Dayflow for flow
- load("Dayflow.RData")
+ load("data/external/Dayflow.RData")
 
 #select just sac river flow
 Sacflow = select(Dayflow, Date, Year, Mo, SAC, YOLO, SJR) %>%
@@ -148,7 +148,7 @@ ggplot()+
   geom_hline(yintercept = 25000, color = "red", linetype =2)+
   geom_vline(data = storms, aes(xintercept = Date), color = "chartreuse")
 
-ggsave("plots/sacflow.png", width = 20, height =8)
+ggsave("results/plots/sacflow.png", width = 20, height =8)
 
 #look at high rate of change as a way to identify storms
 

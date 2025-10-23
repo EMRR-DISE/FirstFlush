@@ -36,7 +36,6 @@ label_dict <- c(
 )
 ```
 
-
 # Import and Prepare Data
 
 ```{r}
@@ -136,7 +135,7 @@ summary(lm_sac_fp_ss_turb)
 
 ```{r}
 # Bring in storm data set
-load(here("StormData.RData"))
+load(here("data/processed/storms/StormData.RData"))
 
 # Clean up Sacflow_wstorms data set
 df_sac_fp_storm <- Sacflow_wstorms %>% 

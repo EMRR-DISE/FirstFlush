@@ -29,10 +29,10 @@ conflicts_prefer(dplyr::filter())
 
 ```{r}
 # Import continuous WQ station coordinates
-sf_stations <- read_sf(here("data/spatial/cont_wq_stations.shp"))
+sf_stations <- read_sf(here("data/processed/spatial/cont_wq_stations.shp"))
 
 # Import continuous WQ station metadata
-df_metadata <- readRDS(here("data/processed/cont_wq_metadata.rds"))
+df_metadata <- readRDS(here("data/processed/wq/cont_wq_metadata.rds"))
 
 # Add metadata to station coordinates
 sf_stations_c1 <- sf_stations %>% left_join(df_metadata, by = join_by(Source, Station_ID))

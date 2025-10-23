@@ -3,8 +3,8 @@ project:
   output-dir: docs
   render:
     - index.qmd
-    - code/cont_wq_maps.qmd
-    - code/suspended_sediment.qmd
+    - code/analysis/cont_wq_maps.qmd
+    - code/analysis/suspended_sediment.qmd
 
 website:
   title: "First Flush Synthesis"
