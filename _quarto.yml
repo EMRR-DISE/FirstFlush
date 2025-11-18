@@ -1,0 +1,23 @@
+project:
+  type: website
+  output-dir: docs
+  render:
+    - index.qmd
+    - code/analysis/cont_wq_maps.qmd
+    - code/analysis/sac_fpt_ssc_turbidity.qmd
+
+website:
+  title: "First Flush Synthesis"
+  navbar:
+    pinned: true
+    right:
+      - icon: github
+        href: https://github.com/EMRR-DISE/FirstFlush
+        aria-label: GitHub
+
+format:
+  html:
+    theme: cosmo
+    css: styles.css
+    toc: true
+
