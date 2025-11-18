@@ -107,11 +107,13 @@ quantile(filter(Sacflow, YSchange>0)$YSchange, c(0.5, 0.8, 0.9, 0.95, 0.99), na.
 Sacflow = mutate(Sacflow, Storm = case_when(change >=6500 ~ "STORM"),
                  Storm2 = case_when(rollchange >=12000 ~ "STORM"),
                  FF = case_when(RollSac > 25000 ~ "STORM"),
-                 FFwTurb = case_when(RollSac > 2500 & RollTurb >50 ~ "STORM"),
+                 FFwTurb = case_when(RollSac > 25000 & RollTurb >50 ~ "STORM"),
                  YSstorm = case_when(YSchange >= 6500 ~ "STORM"),
                  SJRstorm = case_when(SJRchange >= 650 ~ "STORM"))
 
 #maybe I need two days with high change or something?
+
+
 
 
 #limit it to more recent years, just to see what I'm doing better
@@ -215,7 +217,7 @@ SacStorms = SacflowRecent  %>%
   slice_head(n = 1) %>%
   ungroup()
 
-#first time flow > 25000
+#first time three-day average flow > 25000
 SacFF = SacflowRecent  %>%
   mutate(run = with(rle(FF), rep(seq_along(lengths), lengths))) %>%
   group_by(run) %>%
@@ -223,6 +225,69 @@ SacFF = SacflowRecent  %>%
   filter(FF == "STORM") %>%
   slice_head(n = 1) %>%
   ungroup()
+
+#first time three-day average flow > 25000 - for whole time period
+SacFF = Sacflow  %>%
+  mutate(run = with(rle(FF), rep(seq_along(lengths), lengths))) %>%
+  group_by(run) %>%
+  mutate(N = n()) %>%
+  filter(FF == "STORM") %>%
+  slice_head(n = 1) %>%
+  ungroup() %>%
+  mutate(Month = month(Date), WaterYear = case_when(Month %in% c(10,11,12) ~ Year+1,
+                               TRUE ~ Year),
+         DOWY = case_when(Month %in% c(10,11,12) ~ yday(Date) -270,
+                          TRUE ~ yday(Date) +91)) %>%
+  arrange(WaterYear, DOWY) %>%
+  group_by(WaterYear) %>%
+  slice_head(n = 1) %>%
+  ungroup()
+
+
+ggplot(filter(SacFF, WaterYear >= 1960), aes(x = Month)) + geom_histogram()
+
+
+FFoccurance = filter(SacFF, WaterYear >= 1960) %>%
+  group_by(Month) %>%
+  summarise(N = n(), percent = N/64)
+
+
+ggplot(FFoccurance, aes(x = Month, y = percent*100)) + geom_col()+
+  ylab("Percent of Occurances 1960-2024")+
+  theme_bw()+
+  scale_x_continuous(breaks = c(1:12),
+                     labels = c("Jan", "Feb","Mar", "Apr","May", "Jun","Jul", "Aug", "Sep", "Oct","Nov", "Dec"))
+
+write.csv(select(SacFF,Date, SAC, RollSac, FF, WaterYear, Month, DOWY), file = "SacFFdates.csv")
+
+
+write.csv(FFoccurance, file = "FFoccurance.csv", row.names = F)
+
+
+#now flow and turbidity
+SacFFturb = Sacflow  %>%
+  mutate(run = with(rle(FFwTurb), rep(seq_along(lengths), lengths))) %>%
+  group_by(run) %>%
+  mutate(N = n()) %>%
+  filter(FFwTurb == "STORM") %>%
+  slice_head(n = 1) %>%
+  ungroup() %>%
+  mutate(Month = month(Date), WaterYear = case_when(Month %in% c(10,11,12) ~ Year+1,
+                                                    TRUE ~ Year),
+         DOWY = case_when(Month %in% c(10,11,12) ~ yday(Date) -270,
+                          TRUE ~ yday(Date) +91)) %>%
+  arrange(WaterYear, DOWY) %>%
+  group_by(WaterYear) %>%
+  slice_head(n = 1) %>%
+  ungroup()
+
+
+#compare times we have both flow and turbidity versus just one or the other
+
+SacFFturb2 = left_join(filter(select(SacFF, DateFF_flowonly = Date, WaterYear), WaterYear >= 2014),
+                       select(SacFFturb, DateFFwTurb = Date, WaterYear))
+
+write.csv(SacFFturb2, "SacFF_turb_comparison.csv", row.names = F)
 
 #first time change i Sac+Yolo > 6500
 SacYolo = SacflowRecent  %>%

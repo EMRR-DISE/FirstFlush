@@ -132,3 +132,20 @@ save(Sacflow_wstorms, StormStartEnd, Firststorms, file = "StormData.RData")
 
 write.csv(Sacflow_wstorms, "Sacflow_wstorms.csv", row.names = F)
 write.csv(StormStartEnd, "StormsStartEnd.csv", row.names =F)
+
+ggplot(Firststorms, aes(x = yday(Date))) + geom_histogram()
+
+ggplot(filter(Firststorms, year(Date) >1995), aes(x = yday(Date))) + geom_histogram(binwidth = 5)
+
+ggplot(filter(Firststorms, year(Date) >1995), aes(x = yday(Date))) + geom_density()
+
+
+Firststorms = mutate(Firststorms, DOWY = case_when(yday(Date) > 274 ~ yday(Date)- 274,
+                                                   yday(Date) <= 274 ~ yday(Date) + 91))
+
+
+ggplot(filter(Firststorms, year(Date) >1995), aes(x = DOWY)) + geom_density()
+
+
+ggplot(filter(Firststorms, year(Date) >1995), aes(x = DOWY)) + geom_histogram()
+

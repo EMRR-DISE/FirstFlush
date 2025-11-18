@@ -45,6 +45,10 @@ fish_splitts =  fish %>%
 fish_stripers = fish %>%
   filter(Taxa %in% "Morone saxatilis")
 
+
+fish_salmon = fish %>%
+  filter(Taxa %in% "Oncorhynchus tshawytscha")
+
 # do a join and collect_data the resulting data frame
 # collect_data executes the sql query, converts Date and Datetime columns to the correct format and timezone, and gives you a table
 df <- left_join(surv_salvage, fish_smelt) %>%
@@ -61,12 +65,15 @@ dfstripers = left_join(surv_salvage, fish_stripers) %>%
 dfskt <- left_join(surv_skt, fish_smelt) %>%
   collect_data()
 
+dfsalmon = left_join(surv_salvage, fish_salmon) %>%
+  collect_data()
+
 dffmwt <- left_join(surv_fmwt, fish_smelt) %>%
   collect_data()
 # close connection to database
 close_database(con)
 
-save(df, dfsplits, dfshad, dfstripers, dfskt, dffmwt, file = "data/fishdata.RData")
+save(df, dfsplits, dfshad, dfstripers, dfskt, dffmwt, dfsalmon, file = "data/fishdata.RData")
 
 ###########plot salvage#############
 ggplot(df, aes(x = Date, y = Count, color = Station)) + geom_line()
@@ -211,6 +218,87 @@ ggplot(smelt3, aes(x = DOWY, y = MeanSmeltC))+
   geom_line(data = stripers3, color = "orange")+
   geom_line(aes(y = OUTc), color = "blue")+
   facet_wrap(~WY, scales = "free_y")
+
+
+
+
+salmon2 = dfsalmon%>%
+  filter(Station != "SWP NA") %>%
+  filter(!is.na(Date)) %>%
+  group_by(Date) %>%
+  summarise(salmon = sum(Count)) %>% #i'm not sure if this should be sum or mean.
+  mutate(DOY = yday(Date),
+         WY = case_when(month(Date) %in% c(10,11,12) ~ year(Date) +1,
+                        TRUE ~ year(Date)),
+         DOWY = case_when(month(Date) %in% c(10,11,12) ~ DOY -273,
+                          TRUE ~ DOY + 92)) %>%
+  group_by(WY) %>%
+  mutate(MeanSalmon = rollmean(salmon, 8, na.pad = T),
+         ROC = MeanSalmon  - lag(MeanSalmon )) %>% #calculate rate of change to find start of peak?
+  ungroup() %>%
+  left_join(Dayflow) %>%
+  left_join(OMR) %>%
+  mutate(OMRs = scale(OMR), Samons = scale(MeanSalmon), SACs = scale(SAC))
+
+
+
+ggplot(salmon2, aes(x = DOWY, y = Samons)) + geom_line()+
+  facet_wrap(~WY)+ geom_line(aes(x = DOWY, y = OMRs), color = "red")
+
+
+ggplot(salmon2, aes(x = DOWY, y = Samons)) + geom_line()+
+  facet_wrap(~WY)+ geom_line(aes(x = DOWY, y = SACs), color = "red")
+
+##########just winter run salmon##############################
+WRsalmon = read_excel("data/WY10-24 Genetically confirmed WR for Rosie.xlsx") %>%
+  rename(Date = `Sample Date`)
+
+Alldays = seq(ymd("2010-01-01"), ymd("2024-12-31"))
+
+WR2 = WRsalmon %>%
+  right_join(data.frame(Date = Alldays)) %>%
+  mutate(Salvage = case_when(is.na(Salvage) ~ 0,
+                             TRUE ~ Salvage)) %>%
+  group_by(Date) %>%
+  summarise(salmon = sum(Salvage)) %>% #i'm not sure if this should be sum or mean.
+  mutate(DOY = yday(Date),
+         WY = case_when(month(Date) %in% c(10,11,12) ~ year(Date) +1,
+                        TRUE ~ year(Date)),
+         DOWY = case_when(month(Date) %in% c(10,11,12) ~ DOY -273,
+                          TRUE ~ DOY + 92)) %>%
+  group_by(WY) %>%
+  mutate(MeanSalmon = rollmean(salmon, 8, na.pad = T),
+         ROC = MeanSalmon  - lag(MeanSalmon )) %>% #calculate rate of change to find start of peak?
+  ungroup() %>%
+  left_join(Dayflow) %>%
+  left_join(OMR) %>%
+  mutate(OMRs = scale(OMR), Samons = scale(MeanSalmon), SACs = scale(SAC))
+
+
+ggplot(WR2, aes(x = DOWY, y = Samons)) + geom_line()+
+  facet_wrap(~WY)+ geom_line(aes(x = DOWY, y = SACs), color = "red")
+
+
+ggplot(WR2, aes(x = DOWY, y = MeanSalmon)) + geom_line()+
+  facet_wrap(~WY)+ geom_line(aes(x = DOWY, y = SAC/10000), color = "red")+
+  scale_y_continuous(
+    "WR Salmon Salvage",
+    sec.axis = sec_axis(~ . *10000, name = "SacRiver Flow"))+
+  theme(axis.text.y.right = element_text(color = "red"))
+
+
+ggplot(WR2, aes(x = DOWY, y = MeanSalmon)) + geom_line()+
+  facet_wrap(~WY)+ geom_line(aes(x = DOWY, y = OMR/1000), color = "blue")+
+  scale_y_continuous(
+    "WR Salmon Salvage",
+    sec.axis = sec_axis(~ . *1000, name = "OMR Flow"))+
+  theme(axis.text.y.right = element_text(color = "blue"))
+
+ggplot(WR2, aes(x = OMR, y = MeanSalmon)) + geom_point()+ geom_smooth()+
+  ylab("Daily Winter Run Salvage")+ xlab("OMR flow (daily mean)")
+
+ggplot(WR2, aes(x = SAC, y = MeanSalmon)) + geom_point()+ geom_smooth()+
+  ylab("Daily Winter Run Salvage")+ xlab("Sac flow at freeport (daily mean)")
 
 
 
