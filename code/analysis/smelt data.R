@@ -73,11 +73,9 @@ dffmwt <- left_join(surv_fmwt, fish_smelt) %>%
 # close connection to database
 close_database(con)
 
-<<<<<<< HEAD:smelt data.R
-save(df, dfsplits, dfshad, dfstripers, dfskt, dffmwt, dfsalmon, file = "data/fishdata.RData")
-=======
+
 save(df, dfsplits, dfshad, dfstripers, dfskt, dffmwt, file = "data/processed/fish/fishdata.RData")
->>>>>>> 5326a548fb3249697ef5aa5c34435da41e909525:code/analysis/smelt data.R
+
 
 ###########plot salvage#############
 ggplot(df, aes(x = Date, y = Count, color = Station)) + geom_line()

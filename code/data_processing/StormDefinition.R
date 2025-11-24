@@ -130,7 +130,6 @@ ggplot(filter(Sacflow_wstorms, Date >ymd("2023-10-01"), Date <ymd("2024-06-01"))
 #export storm files
 save(Sacflow_wstorms, StormStartEnd, Firststorms, file = "data/processed/storms/StormData.RData")
 
-<<<<<<< HEAD:StormDefinition.R
 write.csv(Sacflow_wstorms, "Sacflow_wstorms.csv", row.names = F)
 write.csv(StormStartEnd, "StormsStartEnd.csv", row.names =F)
 
@@ -140,9 +139,10 @@ ggplot(filter(Firststorms, year(Date) >1995), aes(x = yday(Date))) + geom_histog
 
 ggplot(filter(Firststorms, year(Date) >1995), aes(x = yday(Date))) + geom_density()
 
-
+allyears = data.frame(WY = 1930:2024)
 Firststorms = mutate(Firststorms, DOWY = case_when(yday(Date) > 274 ~ yday(Date)- 274,
-                                                   yday(Date) <= 274 ~ yday(Date) + 91))
+                                                   yday(Date) <= 274 ~ yday(Date) + 91)) %>%
+  right_join(allyears)
 
 
 ggplot(filter(Firststorms, year(Date) >1995), aes(x = DOWY)) + geom_density()
@@ -150,7 +150,4 @@ ggplot(filter(Firststorms, year(Date) >1995), aes(x = DOWY)) + geom_density()
 
 ggplot(filter(Firststorms, year(Date) >1995), aes(x = DOWY)) + geom_histogram()
 
-=======
-write.csv(Sacflow_wstorms, "data/processed/storms/Sacflow_wstorms.csv", row.names = F)
-write.csv(StormStartEnd, "data/processed/storms/StormsStartEnd.csv", row.names =F)
->>>>>>> 5326a548fb3249697ef5aa5c34435da41e909525:code/data_processing/StormDefinition.R
+
