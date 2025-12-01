@@ -66,17 +66,22 @@ annual_salvage = df_salvage %>%
   left_join(select(FirstStorms, Date, WY, SAC, YOLO, TotalFlow)) %>%
 mutate(Month = month(Date), DOWY = case_when(Month %in% c(10,11,12) ~ yday(Date)-275, TRUE ~  yday(Date)+91))
 
+
 #timing of first flush versus annualsalvage
 ggplot(annual_salvage, aes(x = DOWY, y = log(CPUE)))+ geom_point() + geom_smooth(method = "lm")+
   facet_wrap(~Taxa, scales = "free_y")+ ylab("Log salvage CPUE")+
   xlab("Day of water year of first flush")
 
 
-ggplot(annual_salvage, aes(x = DOWY, y = log(Count)))+ geom_point() + #geom_smooth()+
+ggplot(annual_salvage, aes(x = DOWY, y = log(Count)))+ geom_point() + geom_smooth(method = "lm")+
   facet_wrap(~Taxa, scales = "free_y")+
   xlab("Day of water year of first flush")
 
+#fish seen in predator flush that don't count toward salvage.
 
+#Get tables for each species from FTP site.
+
+#figure out where deltafish is pulling salvage data from.
 #strenth of first flush versus annualsalvage
 ggplot(annual_salvage, aes(x = log(YOLO+SAC), y = log(Count)))+ geom_point() + geom_smooth(method = "lm")+
   facet_wrap(~Taxa, scales = "free_y")+ xlab("Strength of first flush")
@@ -85,3 +90,8 @@ ggplot(annual_salvage, aes(x = log(YOLO+SAC), y = log(Count)))+ geom_point() + g
 ggplot(annual_salvage, aes(x = log(TotalFlow), y = log(Count)))+ geom_point() +
   geom_smooth(method = "lm")+
   facet_wrap(~Taxa, scales = "free_y")+ xlab("log-transformed Strength of first flush (total AF)")
+
+#look at effect of exports on this relationsihp. BiOps try and limit entrainment.
+
+#magnitude of exports during first flush driving seasonal salvage?
+ #Look at % of first flush exported?
