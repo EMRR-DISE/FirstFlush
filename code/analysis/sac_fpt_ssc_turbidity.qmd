@@ -5,7 +5,9 @@ date: today
 date-format: long
 format:
   html:
-    code-fold: true
+    toc: true
+    toc-expand: 2
+    code-fold: show
     code-tools: true
 execute: 
   message: false
@@ -55,9 +57,6 @@ df_sac_storm <- Sacflow_wstorms %>%
   set_variable_labels(Storm_cat = "Storm Category", YoloSac = "Sac + Yolo Flow (cfs)")
 
 # Combine storm data set with suspended sediment and turbidity data
-df_sac_fpt_ssc_turb_storm <- df_sac_fpt_ssc_turb %>% 
-  left_join(df_sac_storm, by = join_by(Date))
-
 ls_sac_fpt_storm <- 
   list(
     ssc = df_sac_fpt_ssc_turb %>% select(-Turbidity) %>% drop_na(SSC),
