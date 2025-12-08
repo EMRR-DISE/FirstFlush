@@ -139,6 +139,21 @@ lm_sac_fpt_ssc_turb_all <- ls_sac_fpt_storm$ssc_turb %>% lm(log(Turbidity) ~ log
 
 summary(lm_sac_fpt_ssc_turb_all)
 ```
+Predict the change in suspended sediment needed to go from 180 FNU to 20 FNU
+
+```{r}
+Newdat = data.frame(Turb = c(20, 180))
+
+#log(Turb) = 0.84783*log(SSC)-0.449317
+#so, SSC = exp(log(Turb)/0.84783+ 0.449317)
+
+#I'm not sure I did the standard error right. 
+Newdat = mutate(Newdat, SSC = exp(log(Turb)/0.84785+ 0.449317),
+                SSC_SE = exp(log(Turb)/(0.84785-0.007718)+ 0.449317),
+                SSC_SE2 = exp(log(Turb)/(0.84785+0.007718)+ 0.449317))
+
+```
+
 
 ## Just Storms
 
