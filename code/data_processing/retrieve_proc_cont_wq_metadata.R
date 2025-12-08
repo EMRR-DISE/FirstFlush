@@ -115,7 +115,8 @@ df_usgs_sta_meta <-
       istart, iend,
       \(x, y) read_waterdata_ts_meta(
         monitoring_location_id = df_usgs_sta_filt$monitoring_location_id[x:y],
-        parameter_code = params
+        parameter_code = params,
+        skipGeometry = TRUE
       )
     ),
     df_meta_nrow = map_int(df_meta, nrow)
@@ -128,7 +129,6 @@ df_usgs_sta_meta <-
 # Filter metadata to the stations we're interested in
 df_usgs_sta_meta_c1 <- df_usgs_sta_meta %>%
   filter(computation_identifier %in% c("Mean", "Median", "Instantaneous")) %>%
-  st_drop_geometry() %>%
   select(
     Station_ID = monitoring_location_id,
     Parameter = parameter_name,
@@ -154,7 +154,7 @@ df_usgs_sta_meta_c2 <- df_usgs_sta_meta_c1 %>%
   rename(Station_Name = monitoring_location_name) %>%
   relocate(Station_Name, .after = Station_ID) %>%
   st_as_sf(sf_column_name = "geometry") %>%
-  mutate(across(where(is.POSIXct), \(x) force_tz(x, tzone = "Etc/GMT+8")))
+  mutate(across(where(is.POSIXct), \(x) with_tz(force_tz(x, tzone = "UTC"), tzone = "Etc/GMT+8")))
 
 
 # DWR - NCRO from WDL -------------------------------------------------------------------------
