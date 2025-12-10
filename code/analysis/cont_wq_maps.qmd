@@ -145,7 +145,7 @@ ndf_maps$maps[[7]]
 ```{r}
 sf_stations_c1 %>%
   st_drop_geometry() %>%
-  select(-c(SubRegion, CDEC_ID)) %>%
+  select(-c(Station_ID, SubRegion, CDEC_ID)) %>%
   mutate(
     across(c(Start, End), ymd),
     across(c(Source, Region, Parameter, Interval), factor)
