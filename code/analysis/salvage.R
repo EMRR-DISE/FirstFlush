@@ -122,7 +122,7 @@ ggplot(annual_salvage, aes(x = Exports/TotalFlow, y = log(Count)))+ geom_point()
 #magnitude of exports during first flush driving seasonal salvage?
  #Look at % of first flush exported?
 
-#OK, now see if there is a significant relationship if i seperate pre-2008 from post-2008
+#OK, now see if there is a significant relationship if i seperate pre-2008 from post-2008 ########################
 annual_salvage = mutate(annual_salvage, regime = case_when(WY < 2008 ~ "pre-2008",
                                                            WY >= 2008 ~ "post-2008"))
 
@@ -182,7 +182,7 @@ ggplot(filter(Sacflow_wstorms, WY == 2022), aes(x = Date, y = YoloSac))+ geom_po
 ggplot(filter(Sacflow_wstorms, WY == 2017), aes(x = Date, y = YoloSac))+ geom_point()+ geom_line()
 
 #OK, a few other things to look at
-# number of storms versus total salvage
+# number of storms versus total salvage #################################
 #oh, can i add the FMWT index as a factor?
 ScientificNames = data.frame(CommonName = c("Threadfin Shad", "American Shad", "Delta Smelt",
                                             "Longfin Smelt", "Striped Bass Age0", "Splittail"),
@@ -190,6 +190,8 @@ ScientificNames = data.frame(CommonName = c("Threadfin Shad", "American Shad", "
                                        "Spirinchus thaleichthys", "Morone saxatilis", "Pogonichthys macrolepidotus"))
 
 FMWT = read_csv("data/raw/FMWTindices.csv")
+
+ggplot(FMWT, aes(x = Year, y = `Threadfin Shad`)) + geom_point()+ geom_line()
 
 FMWTsmelt =FMWT %>%
   pivot_longer(cols = c(`Threadfin Shad`:last_col()), names_to = "CommonName", values_to = "FMWTIndex") %>%
@@ -222,7 +224,7 @@ summary(lm4)
 #oh, something's here! Higher FF means less entrainment.
 plot(allEffects(lm4))
 
-#OK, now total number of storms in the winter
+#OK, now total number of storms in the winter ##################################
 #Would it be number of storms? Number of storm days? or amount of storm flow?
 
 StormSummary = Sacflow_wstorms %>%
@@ -257,7 +259,7 @@ ggplot(annual_salvagec, aes(x = StormN, y = log(Count+1))) + geom_point()+
   geom_smooth(method = "lm")+
   facet_wrap(~Taxa, scales = "free_y")+ xlab("number of storm events")
 
-#ok, now a model
+#ok, now a model ###################
 lm5 = lm(log(Count+1)~StormVolume+StormExports+ log(FMWTIndex+1), data = filter(longfin, !is.na(DOWY)))
 summary(lm5)
 #beleh
@@ -287,5 +289,96 @@ ggplot(annual_salvagec, aes(x = StormVolume, y = StormExports)) + geom_smooth(me
 ggplot(annual_salvagec, aes(x = log(StormVolume), y = log(TotalFlow))) + geom_smooth(method = "lm")+
   geom_point()
 
-#check whether FF volume or all storm volumes are better predictors for longfin salvage
+#check whether FF volume or all storm volumes are better predictors for longfin salvage #############################
 #get abundance indices for sturgeon and salmon
+
+STN = read_csv("data/raw/SummerTownetCatchPerTow1959-2024.csv") %>%
+  group_by(Year) %>%
+  summarize(Threadfin = sum(`ThreadfinShad`), tows = n(), Stations = length(unique(StationCode)),
+            ThreadfinPerTow = Threadfin/tows, AmShad = sum(`AmericanShad`), AmShadPerTow = AmShad/tows)
+
+ggplot(STN, aes(x = Year, y = ThreadfinPerTow)) + geom_point()+ geom_line()
+
+
+ggplot(STN, aes(x = Year, y = AmShadPerTow)) + geom_point()+ geom_line()
+
+
+ggplot(FMWT, aes(x = Year, y = `American Shad`)) + geom_point()+ geom_line()
+
+
+#seperate by project ###################################
+
+annual_salvage_P = df_salvage %>%
+  mutate(Year = year(Date), Month = month(Date),
+         WY = case_when(Month %in% c(10,11,12) ~ Year+1, TRUE ~ Year),
+         Facility = case_when(Station %in% c("SWP NA", "SWP New State Facility", "SWP Old State Facility") ~ "SWP",
+                              Station == "CVP Federal Facility" ~ "CVP")) %>%
+  group_by(WY, Taxa, Facility) %>%
+  summarize(Count = sum(Count)) %>%
+  left_join(select(FirstStorms, Date, WY, SAC, YOLO, TotalFlow, Exports)) %>%
+  mutate(Month = month(Date), DOWY = case_when(Month %in% c(10,11,12) ~ yday(Date)-275, TRUE ~  yday(Date)+91),
+         regime = case_when(WY < 2008 ~ "pre-2008",
+                            WY >= 2008 ~ "post-2008"))
+
+
+#timing of first flush versus annualsalvage
+ggplot(annual_salvage_P, aes(x = DOWY, y = log(Count), color = Facility))+ geom_point() + geom_smooth(method = "lm")+
+  facet_wrap(~Taxa, scales = "free_y")+ ylab("Log salvage CPUE")+
+  xlab("Day of water year of first flush")
+
+#strenth of first flush versus annualsalvage
+ggplot(annual_salvage_P, aes(x = log(TotalFlow), y = log(Count), color = Facility))+ geom_point() +
+  geom_smooth(method = "lm")+
+  facet_wrap(~Taxa, scales = "free_y")+ xlab("log-transformed Strength of first flush (total AF)")+
+  ylab("total annual salvage (log-transformed)")
+
+#Exports versus annual salvage
+
+ggplot(annual_salvage_P, aes(x = log(Exports), y = log(Count), color = Facility))+ geom_point() +
+  geom_smooth(method = "lm")+
+  facet_wrap(~Taxa, scales = "free_y")+ xlab("log-transformed exports during first flush")
+
+#Salvage versus expot/inflow ratio
+
+ggplot(annual_salvage_P, aes(x = Exports/TotalFlow, y = log(Count), color = Facility))+ geom_point() +
+  geom_smooth(method = "lm")+
+  facet_wrap(~Taxa, scales = "free_y")+ xlab("percentage of inflow exported")
+#yuck
+
+#add FMWT and total storms (by project) ############################
+
+annual_salvage_p2= left_join(annual_salvage_P, FMWTsmelt) %>%
+  left_join(StormSummary, by = "WY")
+
+
+smelt_p = filter(annual_salvage_p2, Taxa == "Hypomesus transpacificus")
+longfin_p = filter(annual_salvage_p2, Taxa == "Spirinchus thaleichthys" )
+
+lm2p = lm(log(Count+1)~ log(TotalFlow)*Facility+ log(FMWTIndex+1), data = smelt_p)
+summary(lm2p)
+plot(allEffects(lm2p))
+#nope
+
+#timing
+lm3p = lm(log(Count+1)~DOWY*Facility+ FMWTIndex, data = smelt_p)
+summary(lm3p)
+#also nope
+
+#longfin?
+lm4p = lm(log(Count+1)~DOWY*Facility+ FMWTIndex, data = filter(longfin_p, !is.na(DOWY)))
+summary(lm4p)
+#definitely no
+
+lm4p = lm(log(Count+1)~log(TotalFlow)*Facility+ log(FMWTIndex), data = filter(longfin_p, !is.na(DOWY)))
+summary(lm4p)
+#oh, something's here! Higher FF means less entrainment.
+plot(allEffects(lm4p))
+
+#total volumen in all the storms
+
+lm4p2 = lm(log(Count+1)~log(StormVolume)*Facility+ log(FMWTIndex), data = filter(longfin_p, !is.na(DOWY)))
+summary(lm4p2)
+#total volume of all storms is a lot more significant
+#still no interaction with facility
+plot(allEffects(lm4p2))
+

@@ -144,14 +144,45 @@ Predict the change in suspended sediment needed to go from 180 FNU to 20 FNU
 Newdat = data.frame(Turb = c(20, 180))
 
 #log(Turb) = 0.84783*log(SSC)-0.449317
-#so, SSC = exp(log(Turb)/0.84783+ 0.449317)
+#so, SSC = exp((log(Turb)+ 0.449317)/0.84783)
 
 #I'm not sure I did the standard error right. 
-Newdat = mutate(Newdat, SSC = exp(log(Turb)/0.84785+ 0.449317),
-                SSC_SE = exp(log(Turb)/(0.84785-0.007718)+ 0.449317),
-                SSC_SE2 = exp(log(Turb)/(0.84785+0.007718)+ 0.449317))
+Newdat = mutate(Newdat, SSC = exp((log(Turb)+ 0.449317)/0.84785),
+                SSC_SE = exp((log(Turb)+ 0.449317)/(0.84785-0.007718)),
+                SSC_SE2 = exp((log(Turb)+ 0.449317)/(0.84785+0.007718)))
+
+newturbs = data.frame(SSC = c(1:1000))
+preds = predict(lm_sac_fpt_ssc_turb_all, newdata = newturbs, se.fit = T)
+
+newturbs_x = data.frame(SSC = c(1:1000),logturb = preds$fit, sefit = preds$se.fit) %>%
+                        mutate(Turbidity = exp(logturb), Turbidity_plusSE = exp(logturb + sefit),
+                        Turbidity_minusSE = exp(logturb - sefit))
+
 
 ```
+
+Try reversing the linera model, easeir to calculate standard error
+
+```{r}
+
+lm_sac2 <- ls_sac_fpt_storm$ssc_turb %>% lm(log(SSC) ~log(Turbidity) , data = .)
+
+summary(lm_sac2 )
+plot(lm_sac2)
+
+outs = predict(lm_sac2, newdata = data.frame(Turbidity = c(20, 180)), se.fit = T)
+exp(outs$fit)
+
+
+#wow, that's relaly different
+
+ggplot( ls_sac_fpt_storm$ssc_turb, aes(x = log(SSC), y = log(Turbidity))) + geom_point()+ geom_smooth(method = "lm")
+
+
+ggplot( ls_sac_fpt_storm$ssc_turb, aes(y = log(SSC), x = log(Turbidity))) + geom_point()+ geom_smooth(method = "lm")
+
+```
+
 
 
 ## Just Storms
