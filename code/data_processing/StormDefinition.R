@@ -149,5 +149,3 @@ ggplot(filter(Firststorms, year(Date) >1995), aes(x = DOWY)) + geom_density()
 
 
 ggplot(filter(Firststorms, year(Date) >1995), aes(x = DOWY)) + geom_histogram()
-
-

@@ -19,23 +19,26 @@ library(deltafish)
 #
 # surv_salvage <- surv %>%
 #   filter(Source == "Salvage" & Date > "1990-01-01") %>%
-#   select(SampleID, Date, Source, Station, Sal_surf, Temp_surf, TurbidityNTU, Secchi, Tow_volume, Notes_tow)
+#   select(SampleID, Date, Datetime, Source, Station, Sal_surf, Temp_surf, TurbidityNTU, Secchi, Tow_volume, Notes_tow)
 #
 # fish_listed <- fish %>%
 #   filter(Taxa %in% c("Hypomesus transpacificus", "Oncorhynchus tshawytscha", "Spirinchus thaleichthys",
 #                      "Acipenser medirostris", "Acipenser transmontanus", "Oncorhynchus mykiss"))
 #
-#
-#
+# fish_lamprey <- fish %>%
+#   filter(Taxa %in% c( "Lampetra ayresii", "Lampetra richardsoni","Lampetra tridentata", "Lampetra","Lampetra pacifica"))
 # # do a join and collect_data the resulting data frame
 # # collect_data executes the sql query, converts Date and Datetime columns to the correct format and timezone, and gives you a table
 # df_salvage <- left_join(surv_salvage, fish_listed) %>%
 #   collect_data()
 #
+# df_lamprey = left_join(surv_salvage, fish_lamprey) %>%
+#   collect_data()
+#
 # # close connection to database
 # close_database(con)
-
-#save(df_salvage, file = "data/raw/salvage.RData")
+#
+# save(df_salvage, df_lamprey, file = "data/raw/salvage.RData")
 load("data/raw/salvage.RData")
 load("data/processed/storms/StormData.RData")
 
@@ -79,6 +82,27 @@ mutate(Month = month(Date), DOWY = case_when(Month %in% c(10,11,12) ~ yday(Date)
        regime = case_when(WY < 2008 ~ "pre-2008",
                           WY >= 2008 ~ "post-2008"))
 
+lampreysum = df_lamprey %>%
+  mutate(Year = year(Date)) %>%
+  group_by(Taxa, Year) %>%
+  summarize(Count = sum(Count, na.rm =T))
+
+ggplot(df_lamprey, aes(x = Length, fill = Taxa)) + geom_histogram()
+
+ggplot(lampreysum, aes(x = Year, y = Count, color = Taxa)) + geom_line()
+
+annual_lamprey = df_lamprey %>%
+  mutate(Year = year(Date), Month = month(Date),
+         WY = case_when(Month %in% c(10,11,12) ~ Year+1, TRUE ~ Year),
+         CPUE = Count/Tow_volume,
+         CPUE = Count/Tow_volume) %>%
+  group_by(WY) %>%
+  summarize(CPUE = sum(CPUE, na.rm =T), Count = sum(Count)) %>%
+  left_join(select(FirstStorms, Date, WY, SAC, YOLO, TotalFlow, Exports)) %>%
+  mutate(Month = month(Date), DOWY = case_when(Month %in% c(10,11,12) ~ yday(Date)-275, TRUE ~  yday(Date)+91),
+         regime = case_when(WY < 2008 ~ "pre-2008",
+                            WY >= 2008 ~ "post-2008"))
+
 
 #timing of first flush versus annualsalvage
 ggplot(annual_salvage, aes(x = DOWY, y = log(CPUE)))+ geom_point() + geom_smooth(method = "lm")+
@@ -89,6 +113,14 @@ ggplot(annual_salvage, aes(x = DOWY, y = log(CPUE)))+ geom_point() + geom_smooth
 ggplot(annual_salvage, aes(x = DOWY, y = log(Count)))+ geom_point() + geom_smooth(method = "lm")+
   facet_wrap(~Taxa, scales = "free_y")+
   xlab("Day of water year of first flush") +ylab("Log of annual salvage")
+
+
+ggplot(annual_lamprey, aes(x = DOWY, y = log(Count)))+ geom_point() + geom_smooth(method = "lm")+
+  xlab("Day of water year of first flush") +ylab("Log of annual lamprey salvage")
+
+
+ggplot(annual_lamprey, aes(x = WY, y = log(Count)))+ geom_point() + geom_smooth(method = "lm")+
+  xlab("water year") +ylab("Log of annual lamprey salvage")
 
 #fish seen in predator flush that don't count toward salvage.
 
@@ -105,11 +137,19 @@ ggplot(annual_salvage, aes(x = log(TotalFlow), y = log(Count)))+ geom_point() +
   facet_wrap(~Taxa, scales = "free_y")+ xlab("log-transformed Strength of first flush (total AF)")+
   ylab("total annual salvage (log-transformed)")
 
+ggplot(annual_lamprey, aes(x = log(TotalFlow), y = log(Count)))+ geom_point() +
+  geom_smooth(method = "lm")+xlab("log-transformed Strength of first flush (total AF)")+
+  ylab("annual lamprey salvage (log-transformed)")
+
 #Exports versus annual salvage
 
 ggplot(annual_salvage, aes(x = log(Exports), y = log(Count)))+ geom_point() +
   geom_smooth(method = "lm")+
   facet_wrap(~Taxa, scales = "free_y")+ xlab("log-transformed exports during first flush")
+
+
+ggplot(annual_lamprey, aes(x = log(Exports), y = log(Count)))+ geom_point() +
+  geom_smooth(method = "lm")+xlab("log-transformed exports during first flush")
 
 #Salvage versus expot/inflow ratio
 
@@ -150,6 +190,11 @@ summary(lm1)
 lm1 = lm(log(Count)~DOWY+ WY, data = smelt)
 summary(lm1)
 #also nope
+
+lm1l = lm(log(Count)~DOWY+ WY, data = annual_lamprey)
+summary(lm1l)
+plot(lm1l)
+#that's not bad
 
 #has there been a change in strength of first flush over tiem?
 
@@ -224,6 +269,10 @@ summary(lm4)
 #oh, something's here! Higher FF means less entrainment.
 plot(allEffects(lm4))
 
+#need an index for juvenile chinook and sturgeon too.
+#salmon by run ##########################################
+
+
 #OK, now total number of storms in the winter ##################################
 #Would it be number of storms? Number of storm days? or amount of storm flow?
 
@@ -235,6 +284,8 @@ StormSummary = Sacflow_wstorms %>%
 
 annual_salvagec = annual_salvageb %>%
   left_join(StormSummary)
+
+annual_lamprey2 = left_join(annual_lamprey, StormSummary, by = "WY")
 
 smelt = filter(annual_salvagec, Taxa == "Hypomesus transpacificus")
 longfin = filter(annual_salvagec, Taxa == "Spirinchus thaleichthys" )
@@ -273,6 +324,13 @@ summary(lm6)
 vif(lm6)
 plot(allEffects(lm6))
 #much better
+
+#lamprey
+lm6l = lm(log(Count+1)~StormVolume, data = annual_lamprey2)
+summary(lm6l)
+plot(lm6l)
+plot(allEffects(lm6l))
+
 
 #what about delta smelt?
 
@@ -350,7 +408,6 @@ ggplot(annual_salvage_P, aes(x = Exports/TotalFlow, y = log(Count), color = Faci
 annual_salvage_p2= left_join(annual_salvage_P, FMWTsmelt) %>%
   left_join(StormSummary, by = "WY")
 
-
 smelt_p = filter(annual_salvage_p2, Taxa == "Hypomesus transpacificus")
 longfin_p = filter(annual_salvage_p2, Taxa == "Spirinchus thaleichthys" )
 
@@ -382,3 +439,196 @@ summary(lm4p2)
 #still no interaction with facility
 plot(allEffects(lm4p2))
 
+#definitely no differences by facility
+
+#salmon run data #####################
+
+#there is genetic data from 2011-2025, but it's seperated oddly, not sure why
+#https://portal.edirepository.org/nis/mapbrowse?packageid=edi.2182.1
+#https://portal.edirepository.org/nis/mapbrowse?packageid=edi.2183.1
+
+#oh, and here are more data
+#https://portal.edirepository.org/nis/mapbrowse?packageid=edi.1842.1
+# https://portal.edirepository.org/nis/mapbrowse?packageid=edi.1839.1
+
+#all the salvage data
+swpsalvage = read_csv("data/raw/SWP_genetic_assignments-2011-2024.csv")
+CVPsalvage = read_csv("data/raw/CVP_genetic_assignments-2011-2024.csv")
+
+#OK, a lot more data
+
+runID = bind_rows(swpsalvage, CVPsalvage)%>%
+  mutate(Date = date(SampleDateTime))
+#that's 34699 rows
+
+salsalvage = filter(df_salvage, Taxa == "Oncorhynchus tshawytscha", Count !=0, year(Date) >2010) %>%
+  mutate(Facility = str_sub(Station, 1,3))
+#41924 rows few extra rows, but not actually that many. BUt this is expaned salvage, not hte number caught, so I'm confused.
+sum(salsalvage$Count)
+
+salsalvagex = filter(df_salvage, Taxa == "Oncorhynchus tshawytscha") %>%
+  mutate(Facility = str_sub(Station, 1,3))%>%
+  left_join(runID, by = c("Date", "Length"= "ForkLength"))
+#
+
+salsalvage_test = filter(salsalvage, !is.na(Genetic_Assignment))
+#ugh, what a mess
+
+#how many salmon have been salvaged?
+salsalvage_c = filter(df_salvage, Taxa == "Oncorhynchus tshawytscha", Count >0, year(Date) >2010)
+sum(salsalvage_c$Count)
+#190,650 - but that's expanded salvage
+
+#maybe I just use the presence dat afor this? Assume equal sampling?
+
+runID2 = runID%>%
+  mutate(Year = year(Date), Month = month(Date),
+         WY = case_when(Month %in% c(10,11,12) ~ Year+1, TRUE ~ Year)) %>%
+  group_by(WY, Genetic_Assignment) %>%
+  summarize(Count = n()) %>%
+  left_join(select(FirstStorms, Date, WY, SAC, YOLO, TotalFlow, Exports)) %>%
+  mutate(Month = month(Date), DOWY = case_when(Month %in% c(10,11,12) ~ yday(Date)-275, TRUE ~  yday(Date)+91))
+
+
+ggplot(runID2, aes(x = DOWY, y = Count)) + geom_point()+geom_smooth(method = "lm") +
+  facet_wrap(~Genetic_Assignment, scales = "free_y")
+
+ggplot(runID2, aes(x = WY, y = Count)) + geom_point()+geom_smooth(method = "lm") +
+  facet_wrap(~Genetic_Assignment, scales = "free_y")
+
+ggplot(runID2, aes(x = log(TotalFlow), y = Count)) + geom_point()+geom_smooth(method = "lm") +
+  facet_wrap(~Genetic_Assignment, scales = "free_y")
+
+ggplot(runID2, aes(x = Exports, y = Count)) + geom_point()+geom_smooth(method = "lm") +
+  facet_wrap(~Genetic_Assignment, scales = "free_y")
+
+#how many salmon were caught? ##########################
+
+foo = read_csv("data/raw/Salvage_2024.csv")
+salsalvage2 = filter(foo, `Scientific Name` == "Oncorhynchus tshawytscha",
+                     year(SampleDate) >2010)
+sum(salsalvage2$Count)
+#we caught 54,000 salmon over those years. We have IDs for 39000 individuals.
+
+
+
+
+#look at acumulation curves #############################################
+df_lamp = df_lamprey %>%
+  group_by(across(c(-Taxa, -Length, -Notes_catch, -Count))) %>%
+  summarize(Count = sum(Count)) %>%
+  mutate(Taxa = "Lamptera spp.")
+df_accum = df_salvage %>%
+  bind_rows(df_lamp) %>%
+  mutate(Year = year(Date), Month = month(Date),
+         DOY = yday(Date), WY = case_when(Month %in% c(10,11,12) ~ Year+1,
+                                          TRUE ~ Year),
+         DOWY = case_when(Month %in% c(10, 11,12) ~ DOY - 273,
+                          TRUE ~ DOY + 92)) %>%
+  arrange(DOWY) %>%
+  group_by(Taxa, WY) %>%
+  mutate(AccumCount = cumsum(Count)) %>%
+  ungroup()
+
+##proportion of salvage ############################################################################
+
+maxsalv = group_by(df_accum, WY, Taxa) %>%
+  summarize(Maxsalvage = max(AccumCount, na.rm =T))
+
+df_accum = df_accum %>%
+  left_join(maxsalv) %>%
+  mutate(propsalv = AccumCount/Maxsalvage)
+
+####accumulation curves ########################################################################
+
+#longfin smelt
+ggplot(filter(df_accum, Taxa == "Spirinchus thaleichthys"), aes(x = DOWY, y = AccumCount, color = as.factor(WY))) + geom_line()+
+  coord_cartesian(ylim = c(0,10000))+
+  #geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Longfin Smelt")
+
+
+ggplot(filter(df_accum, Taxa == "Spirinchus thaleichthys"), aes(x = DOWY, y = propsalv, color = as.factor(WY))) + geom_line()+
+  coord_cartesian(ylim = c(0,1))+
+  #geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Longfin Smelt")
+
+ggplot(filter(df_accum, Taxa == "Spirinchus thaleichthys"), aes(x = DOWY, y = propsalv, color = as.factor(WY))) + geom_line()+
+  geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Longfin Smelt")+
+  facet_wrap(~WY)
+
+
+#steelhead/rainbow trout
+ggplot(filter(df_accum, Taxa == "Oncorhynchus mykiss"), aes(x = DOWY, y = AccumCount, color = as.factor(WY))) + geom_line()+
+  #geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Steelhead/rainbow")
+
+ggplot(filter(df_accum, Taxa == "Oncorhynchus mykiss"), aes(x = DOWY, y = propsalv, color = as.factor(WY))) + geom_line()+
+  #geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Steelhead/rainbow")
+
+ggplot(filter(df_accum, Taxa == "Oncorhynchus mykiss"), aes(x = DOWY, y = propsalv, color = as.factor(WY))) + geom_line()+
+  geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Steelhead/rainbow")+
+  facet_wrap(~WY)
+
+#Delta Smelt
+ggplot(filter(df_accum, Taxa == "Hypomesus transpacificus"), aes(x = DOWY, y = AccumCount, color = as.factor(WY))) + geom_line()+
+  #geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Delta Smelt")
+
+ggplot(filter(df_accum, Taxa == "Hypomesus transpacificus"), aes(x = DOWY, y = propsalv, color = as.factor(WY))) + geom_line()+
+ # geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Delta Smelt")
+
+ggplot(filter(df_accum, Taxa == "Hypomesus transpacificus"), aes(x = DOWY, y = propsalv, color = as.factor(WY))) + geom_line()+
+  geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Delta Smelt")+
+  facet_wrap(~WY)
+
+#Chinook salmon
+
+ggplot(filter(df_accum, Taxa == "Oncorhynchus tshawytscha"), aes(x = DOWY, y = AccumCount, color = as.factor(WY))) + geom_line()+
+  #geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Chinook Salmon (all runs)")
+
+ggplot(filter(df_accum, Taxa == "Oncorhynchus tshawytscha"), aes(x = DOWY, y = propsalv, color = as.factor(WY))) + geom_line()+
+  #geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Chinook Salmon (all runs)")
+
+ggplot(filter(df_accum, Taxa == "Oncorhynchus tshawytscha"), aes(x = DOWY, y = propsalv, color = as.factor(WY))) + geom_line()+
+  geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Chinook Salmon (all runs)") +
+  facet_wrap(~WY)
+
+#green sturegon are
+
+ggplot(filter(df_accum, Taxa == "Acipenser medirostris"), aes(x = DOWY, y = AccumCount, color = as.factor(WY))) + geom_line()+
+  ggtitle("Green Sturgeon")
+
+ggplot(filter(df_accum, Taxa == "Acipenser medirostris"), aes(x = DOWY, y = propsalv, color = as.factor(WY))) + geom_line()+
+  ggtitle("Green Sturgeon")
+
+
+ggplot(filter(df_accum, Taxa == "Acipenser transmontanus"), aes(x = DOWY, y = AccumCount, color = as.factor(WY))) + geom_line()+
+  ggtitle("White Sturgeon")
+
+
+ggplot(filter(df_accum, Taxa == "Acipenser transmontanus"), aes(x = DOWY, y = propsalv, color = as.factor(WY))) + geom_line()+
+  ggtitle("White Sturgeon")
+#sturgeon patterns are super weird
+
+ggplot(filter(df_accum, Taxa == "Lamptera spp."), aes(x = DOWY, y = AccumCount, color = as.factor(WY))) + geom_line()
+ggplot(filter(df_accum, Taxa == "Lamptera spp."), aes(x = DOWY, y = AccumCount, color = as.factor(WY))) + geom_line()+
+  coord_cartesian(ylim = c(0,20000))+
+  ggtitle("Lamprey")
+
+ggplot(filter(df_accum, Taxa == "Lamptera spp."), aes(x = DOWY, y =propsalv, color = as.factor(WY))) + geom_line()+
+  ggtitle("Lamprey")
+
+
+ggplot(filter(df_accum, Taxa == "Lamptera spp."), aes(x = DOWY, y =propsalv, color = as.factor(WY))) + geom_line()+
+  geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
+  ggtitle("Lamprey")+
+  facet_wrap(~WY)
