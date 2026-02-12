@@ -1,5 +1,5 @@
 # Retrieve and process turbidity and suspended sediment data for the following stations:
-  # USGS Sacramento at Freeport station (11447650)
+# USGS Sacramento at Freeport station (11447650)
 # Author: Dave Bosworth
 # Contact: David.Bosworth@water.ca.gov
 
@@ -29,7 +29,7 @@ df_sac_fpt_ssc <- read_waterdata_daily(
   time = paste0("../", end_date)
 )
 
-df_sac_fpt_ssc_c <- df_sac_fpt_ssc %>% select(Date = time, SSC = value)
+df_sac_fpt_ssc_c <- df_sac_fpt_ssc |> select(Date = time, SSC = value)
 
 # Instantaneous (15-min) turbidity data
 df_sac_fpt_turb <- readNWISuv(
@@ -43,28 +43,36 @@ df_sac_fpt_turb <- readNWISuv(
 # Process Data --------------------------------------------------------------------------------
 
 # Calculate daily averages for turbidity
-df_sac_fpt_turb_avg <- as_tibble(df_sac_fpt_turb) %>%
-  mutate(Date = date(dateTime)) %>%
-  summarize(across(where(is.numeric), \(x) mean(x, na.rm = TRUE)), .by = Date) %>%
+df_sac_fpt_turb_dv <- as_tibble(df_sac_fpt_turb) |>
   mutate(
+    Date = date(dateTime),
     Turbidity = coalesce(
       X_MEDIAN.TS087..YSI.model.6136_63680_00000,
       X_BGC.PROJECT...East.Fender._63680_00000
     ),
-    .keep = "unused"
+    .keep = "none"
+  ) |>
+  drop_na(Turbidity) |>
+  summarize(
+    Turbidity_mean = mean(Turbidity),
+    Turbidity_median = median(Turbidity),
+    .by = Date
   )
 
 # Combine SSC and Turbidity data
 df_sac_fpt_ssc_turb <- df_sac_fpt_ssc_c %>%
-  full_join(df_sac_fpt_turb_avg, by = join_by(Date)) %>%
+  full_join(df_sac_fpt_turb_dv, by = join_by(Date)) %>%
   # Add station info
   mutate(Station = "Sacramento River at Freeport", .before = 1) %>%
-  set_variable_labels(SSC = "SSC (mg/L)", Turbidity = "Turbidity (FNU)")
+  set_variable_labels(
+    SSC = "SSC (mg/L)",
+    Turbidity_mean = "Daily Average Turbidity (FNU)",
+    Turbidity_median = "Daily Median Turbidity (FNU)"
+  )
 
 
 # Export Data ---------------------------------------------------------------------------------
 
 # Saving single data frame as an .rds file for now. If we add more data, we'll switch to
-  # an .Rdata file
+# an .Rdata file
 df_sac_fpt_ssc_turb %>% saveRDS(here("data/processed/wq/sac_fpt_ssc_turb.rds"))
-
