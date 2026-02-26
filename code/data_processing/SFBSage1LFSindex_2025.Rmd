@@ -1,0 +1,397 @@
+---
+title: "First Flush Assessment"
+author: "Katie"
+date: '2025-12-18'
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+# Load packages
+```{r}
+library(tidyverse)
+library(lubridate)
+library(ggpubr)
+library(cder)
+library(zoo)
+library(ggplot2)
+library(grid)
+library(dplyr)
+library(readxl)
+library(measurements)
+
+#install.packages("devtools")
+#devtools::install_github("sbashevkin/LTMRdata")
+library(LTMRdata)
+```
+# ADA Formatting theme from CDFW for LFS age 1+ index
+```{r}
+ADA_colors<-data.frame(Source=c("CVP", "SWP",
+                                "Larvae","Larvae (Post-Yolk)","Juveniles","Adult","Large Adult",
+                                "Yolksac Larvae","Post-Yolksac Larvae","Juvenile","Adult","Large Adult",
+                                "Larvae","Larvae (Post-Yolk)","Age-0","Immature Adult","Mature Adult",
+                                "C","D","BN","AN","W",
+                                "20mm","SLS","FMWT","BS","STN"),
+                       Color=c("#bf812d","#35978f",#CVP/SWP
+                                        "#1b7837","#7fbf7b","#E3E3E3","#af8dc3","#762a83",#Lifestage
+                                        "#1b7837","#7fbf7b","#E3E3E3","#af8dc3","#762a83",#LifeStage
+                                        "#1b7837","#7fbf7b","#E3E3E3","#af8dc3","#762a83",#LifeStage
+                                        "#E31A1C","#FF7F00","#FDBF6F","#A6CEE3","#1F78B4",#WYear
+                                        "#4548FA","#1AE4B6","#A2FC3C","#DBA265","#E4460A" #Misc.
+                       ))
+
+cols=ADA_colors$Color
+names(cols)=ADA_colors$Source
+FormattingTheme<-theme_bw()+
+  theme(plot.margin=unit((c(1.5,1.5,0.5,0.5)/5 +0.02),
+                         "inches"),
+        panel.background = element_blank(),
+        #panel.spacing = unit(.75,"lines"),
+        #text size adjustment and alignments
+        #axis.title.x=element_text(size=,margin=margin(t=5)),
+        axis.text.x=element_text(size=11),
+        axis.title.y.left = element_text(vjust=3,size=12),
+        axis.title.y.right = element_text(vjust=3,size=12),
+        #axis.text.x.bottom = element_text(size=11),
+        axis.text.y.left = element_text(size=11),
+        axis.text.y.right = element_text(size=11),
+        #adjust legend to bottom and horizontal to save space
+        #legend.direction = "horizontal", 
+        #legend.box = "horizontal",
+        legend.position = "none",
+        legend.text=element_text(size=11),
+        strip.text = element_text(size=18),
+        strip.text.x = element_text(margin=margin(b=10),size=20),
+        strip.background = element_rect( NA, NA ),#remove box title
+        #get rid of gridlines
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())
+```
+
+#############################################################
+# SFBS LFS age-1+ index Calulations: Adapted from code from Enoch Tham
+
+# Setting Regions, Weight Factors, and Cutoff Lengths ----
+```{r}
+BayStudyRegions <- read_excel("Data/BayStudyRegions.xlsx", 
+                              col_types = c("text", "skip", "skip", 
+                                            "skip", "numeric", "skip", "skip", 
+                                            "skip", "numeric", "text", "text", 
+                                            "text", "skip"))
+
+BayStudyWeightFactor <- read_excel("Data/BayStudyWeightFactor.xlsx") ##(this uses what's in the tech report)
+
+BayStudy_SubRegion_WaterVol <- read_excel("Data/BayStudy_SubRegion_WaterVol.xlsx",
+                                          col_types = c("text",
+                                                        "numeric","numeric","numeric","numeric",
+                                                        "numeric","numeric","numeric","numeric",
+                                                        "numeric","numeric","numeric","numeric",
+                                                        "numeric","numeric","numeric"
+                                          ))%>%filter(!is.na(Subregion))
+BayStudyRegions_SubRegions <- read_excel("Data/Region_Reference_Table_v2023_4.xlsx",sheet="Region_Reference_Table_V2") %>% #Assuming region info has not changed since 2023-2024
+  dplyr::rename(Subregion=SubRegion,Station=StationCode)%>%
+  left_join(BayStudy_SubRegion_WaterVol,by="Subregion")%>%
+  mutate(Total_Volume_metersCubed=conv_unit(Total_Volume, "km3","m3"),
+         AdjustedWeightFactor=Total_Volume_metersCubed/(10^7))
+
+subregion_check<-BayStudyRegions_SubRegions%>%select(-c(Station,OriginalStationCode))%>%distinct()%>%filter(Project=="Baystudy")
+
+
+CutoffLengths<-data.frame(Month= c(1,2,3,4,5,6,7,8,9,10,11,12),
+                          Age1Length= c(40,42,46,52,59,67,71,75,80,83,85,87),
+                          Age2Length= c(90, 93, 96, 100, 105, 108, 111,114, 117, 120, 123, 125))
+```
+
+# Pulling historic data through 2022
+```{r}
+Baystudy<-LTMRdata::Baystudy%>%dplyr::select(Station,Date,Survey,Method,Taxa,Tow_area,Tow_volume,Length,Count)%>%
+  dplyr::rename(Month=Survey, TowArea=Tow_area, TowVolume=Tow_volume)%>%
+  dplyr::filter(Taxa=="Spirinchus thaleichthys")%>%
+  dplyr::left_join(BayStudyRegions%>%
+                     dplyr::select(Station,Region),by="Station")%>%
+  dplyr::mutate(Region=factor(Region, levels = c("South Bay","Central Bay","San Pablo Bay","Suisun Bay","West Delta")),
+                Station=as.numeric(Station),
+                CPUE=ifelse(Method=="Otter trawl",(Count/TowArea)*10000,(Count/TowVolume)*10000),
+                Year=year(Date),
+                Month=month(Date))%>%
+  dplyr::left_join(CutoffLengths,by="Month")%>%
+
+  dplyr::mutate(AgeClass=ifelse(Length>=Age1Length&Length<Age2Length,"Age 1",   #establishing Age Class
+                                ifelse(Length>=Age2Length,"Age 2",
+                                       ifelse(!is.na(Length),"Age 0",NA_character_))))%>%
+  dplyr::mutate(Date=date(Date))
+
+Baystudy_Subregion<-LTMRdata::Baystudy%>%dplyr::select(Station,Date,Survey,Method,Taxa,Tow_area,Tow_volume,Length,Count)%>%
+  dplyr::rename(Month=Survey, TowArea=Tow_area, TowVolume=Tow_volume)%>%
+  dplyr::filter(Taxa=="Spirinchus thaleichthys")%>%
+  dplyr::left_join(BayStudyRegions_SubRegions%>%
+                     filter(Project=="Baystudy")%>%
+                     dplyr::select(OriginalStationCode,Subregion,Total_Volume),by=c("Station"="OriginalStationCode"))%>%
+  dplyr::mutate(Subregion=factor(Subregion),
+  Station=as.numeric(Station),
+  CPUE=ifelse(Method=="Otter trawl",(Count/TowArea)*10000,(Count/TowVolume)*10000),
+  Year=year(Date),
+  Month=month(Date))%>%
+  dplyr::left_join(CutoffLengths,by="Month")%>%
+  dplyr::mutate(AgeClass=ifelse(Length>=Age1Length&Length<Age2Length,"Age 1",
+                                ifelse(Length>=Age2Length,"Age 2",
+                                       ifelse(!is.na(Length),"Age 0",NA_character_))))%>%
+  dplyr::mutate(Date=date(Date))
+
+
+Baystudy<-data.frame(Baystudy)
+str(Baystudy)
+```
+
+# Pulling 2023 data from Adam C.----
+```{r}
+BayStudy_TowInfo_2023<-read_excel("Data/LONSME_AC_2024_TowInfo.xlsx")%>%
+  mutate(Date=as.Date(Date,tryFormats=c("%m/%d/%Y")),
+         Check=`End Meter`-`Start Meter`,
+         Tow_volume=Meter*0.0269*10.7,
+         Station=as.character(Station),
+         Month=month(Date))
+
+BayStudy_2023 <- read_excel("Data/LONSME_AdamChorazyczewski.xlsx")%>%
+  dplyr::rename(Method=Net, Month=Survey)%>%
+  dplyr::mutate(Station=as.character(Station),
+                Method=ifelse(Method==1,"Midwater trawl","Otter trawl"))%>%
+  left_join(BayStudyRegions%>%
+              dplyr::select(Station, Region),by="Station")%>%
+  dplyr::left_join(CutoffLengths,by="Month")%>%
+  dplyr::mutate(AgeClass=ifelse(Length>=Age1Length&Length<Age2Length,"Age 1",
+                                ifelse(Length>=Age2Length,"Age 2","Age 0")),
+                Taxa="Spirinchus thaleichthys")%>%
+  dplyr::select(-Age1Length,-Age2Length)%>%
+  dplyr::rename(Count=Frequency)%>%
+  dplyr::left_join(BayStudy_TowInfo_2023%>%
+                     select(Date,Station,Month,Tow_volume),by=c("Station","Month"))%>%
+  mutate(Tow_area=NA)%>%
+  dplyr::select(Station,Region,Date,Month,Method,Tow_area,Tow_volume,Taxa,AgeClass,Count)%>%
+  dplyr::rename(TowVolume=Tow_volume, TowArea=Tow_area)
+  dplyr::mutate(Date=as.POSIXct(Date),
+                Date=date(Date)+1,
+                Date=as.POSIXct.Date(Date))
+str(BayStudy_2023)
+
+BayStudy_Subregion2023 <- read_excel("Data/LONSME_AdamChorazyczewski.xlsx")%>%
+  dplyr::rename(Method=Net, Month=Survey)%>%
+                 dplyr::mutate(Station=as.character(Station),
+                Method=ifelse(Method==1,"Midwater trawl","Otter trawl"))%>%
+  dplyr::left_join(BayStudyRegions_SubRegions%>%
+                     filter(Project=="Baystudy")%>%
+                     dplyr::select(OriginalStationCode,Subregion,Total_Volume),by=c("Station"="OriginalStationCode"))%>%
+  dplyr::left_join(CutoffLengths,by="Month")%>%
+  dplyr::mutate(Subregion=factor(Subregion), #levels = c("South Bay","Central Bay","San Pablo Bay","Suisun Bay","West Delta")
+  AgeClass=ifelse(Length>=Age1Length&Length<Age2Length,"Age 1",
+                  ifelse(Length>=Age2Length,"Age 2","Age 0")),
+  Taxa="Spirinchus thaleichthys")%>%
+  dplyr::select(-Age1Length,-Age2Length)%>%
+  dplyr::rename(Count=Frequency)%>%
+  dplyr::left_join(BayStudy_TowInfo_2023%>%
+                     select(Date,Station,Month,Tow_volume),by=c("Station","Month"))%>%
+  mutate(Tow_area=NA)%>%
+  dplyr::rename(TowVolume=Tow_volume, TowArea=Tow_area)
+  dplyr::select(Station,Subregion,Total_Volume,Date,Month,Method,TowArea,TowVolume,Taxa,AgeClass,Count)%>%
+  dplyr::mutate(Date=as.POSIXct(Date),
+                Date=date(Date)+1,
+                Date=as.POSIXct.Date(Date))
+
+```
+
+# Setting up 2024 ----
+```{r}
+Tows_2024<-read.csv("Data/SFBSValidTows_AugToDec_2024-12-26.csv")
+Catch_2024<-read.csv("Data/SFBS_LFS_For1plusIndex_2024-12-26.csv")
+
+Df<-Catch_2024%>%left_join(Tows_2024,by=c("Year","Survey","Station","Net"))
+
+BayStudy_2024<-Catch_2024%>%left_join(Tows_2024,by=c("Year","Survey","Station","Net"))%>%
+  dplyr::rename(Method=Net)%>%
+  dplyr::mutate(Station=as.character(Station),
+                Date=as.Date(Date),
+                Month=month(Date),
+                Method=ifelse(Method==1,"Midwater trawl","Otter trawl"))%>%
+  filter(Method=="Midwater trawl")%>%
+  rename(Count=Frequency)%>%
+  mutate(TowVolume=TotalMeter*0.0269*10.7)%>%
+  dplyr::left_join(BayStudyRegions%>%
+                     dplyr::select(Station,Region),by="Station")%>%
+  dplyr::mutate(Region=factor(Region, levels = c("South Bay","Central Bay","San Pablo Bay","Suisun Bay","West Delta")),
+                CPUE=(Count/TowVolume)*10000,
+                Year=year(Date),
+                Month=month(Date))%>%
+  dplyr::left_join(CutoffLengths,by="Month")%>%
+  dplyr::mutate(AgeClass=ifelse(Length>=Age1Length&Length<Age2Length,"Age 1", #establishing age class
+                                ifelse(Length>=Age2Length,"Age 2",
+                                       ifelse(!is.na(Length),"Age 0",NA_character_))))%>%
+  mutate(Taxa="Spirinchus thaleichthys",Station=as.numeric(Station))%>%select(-SizeGroup,-AlphaCode)
+
+
+BayStudy_Subregion2024<-Catch_2024%>%left_join(Tows_2024,by=c("Year","Survey","Station","Net"))%>%
+  dplyr::rename(Method=Net)%>%
+  dplyr::mutate(Station=as.character(Station),
+                Date=as.Date(Date),
+                Month=month(Date),
+                Method=ifelse(Method==1,"Midwater trawl","Otter trawl"))%>%
+  rename(Count=Frequency)%>%
+  mutate(TowVolume=TotalMeter*10.7)%>%
+  dplyr::left_join(BayStudyRegions_SubRegions%>%
+                     filter(Project=="Baystudy")%>%
+                     dplyr::select(OriginalStationCode,Subregion,Total_Volume),by=c("Station"="OriginalStationCode"))%>%
+  dplyr::mutate(Subregion=factor(Subregion),# levels = c("South Bay","Central Bay","San Pablo Bay","Suisun Bay","West Delta")
+  CPUE=ifelse(Method=="Otter trawl",(Count/TowArea)*10000,(Count/TowVolume)*10000),
+  Year=year(Date),
+  Month=month(Date))%>%
+  dplyr::left_join(CutoffLengths,by="Month")%>%
+  dplyr::mutate(AgeClass=ifelse(Length>=Age1Length&Length<Age2Length,"Age 1",  #establishing Age Class
+                                ifelse(Length>=Age2Length,"Age 2",
+                                       ifelse(!is.na(Length),"Age 0",NA_character_))))%>%
+  mutate(Taxa="Spirinchus thaleichthys",Station=as.numeric(Station))%>%select(-SizeGroup,-AlphaCode)
+```
+
+# Setting up 2025 using data from Kathy Heib----
+```{r}
+FlowMeter2025 <- read_excel("Data/2025_BayStudy_Jan-Dec_LFS_Data_WB&DWR_Draft.xlsx",sheet="MWT Catch&CPUE")%>%
+  dplyr::rename(Method=Net)%>%
+  dplyr::mutate(Station=as.character(Station),
+                Date=as.Date(Date),
+                Month=month(Date),
+                Method=ifelse(Method==1,"Midwater trawl","Otter trawl"))%>%
+  filter(Method=="Midwater trawl")%>%
+  dplyr::mutate(Station=as.character(Station),
+                Date=as.Date(Date))%>%
+  filter(Tow==1)
+BayStudy2025 <- FlowMeter2025
+BayStudy2025$Count <- BayStudy2025$`Age1+ Catch`
+BayStudy_2025<-BayStudy2025%>%
+dplyr::left_join(BayStudyRegions%>%
+                     dplyr::select(Station,Region),by="Station")%>%
+  dplyr::mutate(Region=factor(Region, levels = c("South Bay","Central Bay","San Pablo Bay","Suisun Bay","West Delta")))
+
+BayStudy_2025<-read_excel("Data/2025_BayStudy_Jan-Dec_LFS_Data_WB&DWR_Draft.xlsx",sheet="LF with AdjFreq & Age Class")%>%
+  dplyr::rename(Method=Net)%>%
+  dplyr::mutate(Station=as.character(Station),
+                Date=as.Date(Date),
+                Month=month(Date),
+                Method=ifelse(Method==1,"Midwater trawl","Otter trawl"))%>%
+  filter(Method=="Midwater trawl")%>%
+  rename(Count=Frequency)%>%
+  filter(Tow==1)%>%
+  dplyr::left_join(BayStudyRegions%>%
+                     dplyr::select(Station,Region),by="Station")%>%
+  left_join(FlowMeter2025,by=c("Month", "Date","Station", "Method", "Tow"))%>%
+  dplyr::mutate(Region=factor(Region, levels = c("South Bay","Central Bay","San Pablo Bay","Suisun Bay","West Delta")))%>%
+               dplyr::left_join(CutoffLengths,by="Month")%>%
+
+#establishing Age Class
+  dplyr::mutate(AgeClass=ifelse(Length>=Age1Length&Length<Age2Length,"Age 1",
+                                ifelse(Length>=Age2Length,"Age 2",
+                                       ifelse(!is.na(Length),"Age 0",NA_character_))))%>%
+  mutate(Taxa="Spirinchus thaleichthys",Station=as.numeric(Station))
+#calculate CPUE for MWT
+BayStudy_2025$CPUE=((BayStudy_2025$Count/BayStudy_2025$TowVolume)*10000)
+BayStudy_2025$AgeClass= "Age 1"
+```
+
+
+# Calculating CPUE and Indicies ----
+```{r}
+RegionalMonthlyAbundance_Midwater<-Baystudy%>%
+  dplyr::select(Station,Region,Date,Month,Method,TowVolume,AgeClass,Count)%>%
+  rbind(BayStudy_2023%>%
+          dplyr::select(Station,Region,Date,Month,Method,TowVolume,AgeClass,Count),
+        BayStudy_2024%>%
+          dplyr::select(Station,Region,Date,Month,Method,TowVolume,AgeClass,Count),
+        BayStudy_2025%>%
+          dplyr::select(Station,Region,Date,Month,Method,TowVolume,AgeClass,Count))%>%
+  dplyr::group_by(Date,Station,Region,Month,Method,TowVolume,AgeClass)%>%
+  filter(!(Station %in% c(752:761) | Station %in% c(863:865)))%>%
+  dplyr::filter(!is.na(Region))%>%
+  dplyr::filter(!is.na(Count))%>%
+  dplyr::summarise(sum_Count=sum(Count),.groups = 'drop')%>%
+  dplyr::mutate(Station=as.character(Station),
+                CPUE=(sum_Count/TowVolume)*10000,
+                Year=year(Date))%>%
+  dplyr::filter(Method=="Midwater trawl")%>%
+  dplyr::select(Year,Month,Station,AgeClass,CPUE)%>%
+  complete(Year,Month,Station,AgeClass,fill=list(CPUE=0))%>%
+  left_join(BayStudyRegions%>%
+              dplyr::select(Station,Region),by="Station")%>%
+  dplyr::group_by(Year,Month,Station,Region,AgeClass)%>%
+  dplyr::summarise(mean_CPUE=mean(CPUE),.groups='drop')%>%
+  dplyr::group_by(Year,Month,Region,AgeClass)%>%
+  dplyr::summarise(RegionalMonthlyAbundance=mean(mean_CPUE),.groups = 'drop')%>%
+  left_join(BayStudyWeightFactor%>%dplyr::filter(Method=="Midwater trawl")%>%
+              dplyr::select(Region,WeightFactor),by="Region")%>%
+  dplyr::mutate(RegionalMonthlyAbundIndex=RegionalMonthlyAbundance*WeightFactor)
+
+RegionalMonthlyAbundance_Midwater2<-Baystudy_Subregion%>%filter((Station %in% c(752:761) | Station %in% c(863:865)))%>%
+  dplyr::select(Station,Subregion,Date,Month,Method,TowVolume,AgeClass,Count)%>%
+  rbind(BayStudy_Subregion2023%>%
+          dplyr::select(Station,Subregion,Date,Month,Method,TowVolume,AgeClass,Count),
+        BayStudy_Subregion2024%>%
+          dplyr::select(Station,Subregion,Date,Month,Method,TowVolume,AgeClass,Count))%>%
+  dplyr::group_by(Date,Station,Subregion,Month,Method,TowVolume,AgeClass)%>%
+  dplyr::mutate(Station=as.character(Station),
+                sum_Count=sum(Count))%>%
+  dplyr::mutate(sum_Count=sum(Count),
+                CPUE=(sum_Count/TowVolume)*10000,
+                Year=year(Date))%>%
+  dplyr::filter(Method=="Midwater trawl")%>%
+  ungroup()%>%
+  dplyr::select(Year,Month,Station,AgeClass,CPUE)%>%
+  complete(Year,Month,Station,AgeClass,fill=list(CPUE=0))%>%
+  dplyr::left_join(BayStudyRegions_SubRegions%>%
+                     filter(Project=="Baystudy")%>%
+                     dplyr::select(OriginalStationCode,Subregion,Total_Volume),by=c("Station"="OriginalStationCode"))%>%
+  dplyr::mutate(Total_Volume_metersCubed=conv_unit(Total_Volume, "km3","m3"),
+                AdjustedWeightFactor=Total_Volume_metersCubed/(10^7))%>%
+  dplyr::group_by(Year,Month,Station,Subregion,AdjustedWeightFactor,AgeClass)%>%
+  dplyr::summarize(mean_CPUE=mean(CPUE),.groups='drop')%>%
+  dplyr::group_by(Year,Month,Subregion,AdjustedWeightFactor,AgeClass)%>%
+  dplyr::summarize(RegionalMonthlyAbundance=mean(mean_CPUE),.groups='drop')%>%
+  ungroup()%>%
+  #left_join(BayStudyWeightFactor%>%dplyr::filter(Method=="Midwater trawl")%>%
+  #                  dplyr::select(Region,WeightFactor),by="Region")%>%
+  dplyr::mutate(RegionalMonthlyAbundIndex=RegionalMonthlyAbundance*AdjustedWeightFactor)%>%
+  dplyr::rename(Region=Subregion,WeightFactor=AdjustedWeightFactor)
+
+RegionalMonthlyAbundance_Combo<-rbind(RegionalMonthlyAbundance_Midwater,RegionalMonthlyAbundance_Midwater2)
+
+
+Baystudy_AnnualAbund_HybridCalc<- AnnualAbundIndex_Midwater<-RegionalMonthlyAbundance_Combo%>%
+  filter(AgeClass!="Age 0" & Month>7)%>%
+  dplyr::group_by(Year)%>%
+  summarise(AnnualAbundIndex=sum(RegionalMonthlyAbundIndex))
+write.csv(Baystudy_AnnualAbund_HybridCalc,"Output/Baystudy_Annual_hybridIndex_2025-12-18.csv")
+#raw set----
+RegionalMonthlyAbundance_Midwater_raw<-Baystudy%>%
+  dplyr::select(Station,Region,Date,Month,Method,TowVolume,AgeClass,Count)%>%
+  rbind(BayStudy_2023%>%
+          dplyr::select(Station,Region,Date,Month,Method,TowVolume,AgeClass,Count),
+        BayStudy_2024%>%
+          dplyr::select(Station,Region,Date,Month,Method,TowVolume,AgeClass,Count))%>%
+  dplyr::group_by(Date,Station,Region,Month,Method,TowVolume,AgeClass)%>%
+  filter(!(Station %in% c(752:761) | Station %in% c(863:865)))%>%
+  dplyr::filter(!is.na(Region))%>%
+  dplyr::filter(!is.na(Count))
+#write.csv(RegionalMonthlyAbundance_Midwater_raw,"Raw_Baystudy_Data_pt1.csv")
+
+SubRegionalMonthlyAbundance_Midwater_raw<-Baystudy_Subregion%>%filter((Station %in% c(752:761) | Station %in% c(863:865)))%>%
+  dplyr::select(Station,Subregion,Date,Month,Method,TowVolume,AgeClass,Count)%>%
+  rbind(BayStudy_Subregion2023%>%
+          dplyr::select(Station,Subregion,Date,Month,Method,TowVolume,AgeClass,Count),
+        BayStudy_Subregion2024%>%
+          dplyr::select(Station,Subregion,Date,Month,Method,TowVolume,AgeClass,Count))%>%
+  dplyr::group_by(Date,Station,Subregion,Month,Method,TowVolume,AgeClass)
+#write.csv(SubRegionalMonthlyAbundance_Midwater_raw,"Raw_Baystudy_Data_pt2.csv")
+
+ggplot()+
+  #geom_line(data=Baystudy_AnnualAbund_Tech63%>%
+  #            dplyr::filter(Year>=2008),aes(x=Year,y=AnnualAbundIndex),linewidth=2,)+
+  geom_line(data=Baystudy_AnnualAbund_HybridCalc%>%
+              dplyr::filter(Year>2007),aes(x=Year,y=AnnualAbundIndex),linewidth=2,color="red")+
+  #geom_line(data=previous_hybridIndex%>%
+  #            dplyr::filter(Year>=2008),aes(x=Year,y=AnnualAbundIndex),linewidth=2,color="darkgrey",linetype="dashed")+
+  FormattingTheme
+```
