@@ -1,0 +1,53 @@
+---
+title: "Salmon README"
+format: pdf
+editor: visual
+---
+
+This document is intended to orient you to process, data, code and analyses used in assessing Central Valley Chinook responses to 'first flush' events in the Sacramento River watershed. Details about the reasons for the effort as well as research objectives can be found elsewhere.
+
+something about the GitHub repo...
+
+## Repository Summary
+
+### Directory Structure
+
+`/Users/diomedes/Library/CloudStorage/OneDrive-CaliforniaDepartmentofWaterResources/3-Projects/09b-first flush/`
+
+`|--- code/ # R scripts, Quarto files and markdown files`
+
+`|------ /salmon_README.qmd/ #Project and workflow description file`
+
+`|--- data/ # raw and processed data`
+
+`|------ raw/ # raw data directly from online repositories (eg DJFMP)`
+
+`|------ processed/ # tidy data utilized throughout the workflow`
+
+`|--- docs/ # documents, documentation, notes, and resources`
+
+`|--- plots/ # plots, maps and figures`
+
+`|--- results/ # output: results, tables, and exports`
+
+### Data sources
+
+### Installation & setup
+
+### Packages
+
+```{r}
+library(renv)
+dependencies <- renv::dependencies(path = "./code/ff_salmon.qmd")
+view(dependencies)
+```
+
+## Workflow
+
+### Explore
+
+### Refine
+
+### Produce
+
+## References

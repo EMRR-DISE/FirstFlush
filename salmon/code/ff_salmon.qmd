@@ -1,0 +1,29 @@
+---
+title: "FirstFlush_Salmon"
+author: "Pete Nelson"
+format: pdf
+editor: visual
+---
+
+## packages
+
+```{r}
+#Load packages
+library(here)
+library(tidyverse)
+library(janitor) 
+library(ggplot2)
+library(MASS)
+library(brms)
+library(chron)
+library(gridExtra)
+library(dataRetrieval)
+remotes::install_github("doi-usgs/EflowStats@v5.2.0")
+library(EflowStats)
+library(fishualize)
+library(tidybayes)
+```
+
+## beach seine
+
+Beach seine data from the Delta Juvenile Fish Monitoring Program (DJFMP)
