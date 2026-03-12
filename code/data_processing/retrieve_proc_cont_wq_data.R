@@ -32,28 +32,31 @@ conflicts_prefer(dplyr::filter())
 # Source data functions
 source(here("code/data_processing/01_data_retrieve_process_functions.R"))
 
+# Define end date
+END_DATE <- "2025-09-30"
+
 # Define station abbreviations, full names, and ID's for data access
 df_stations <- tribble(
-  ~source    , ~full_name                                       , ~data_id   , ~abbr ,
-  "USGS"     , "Sacramento River at Freeport"                   , "11447650" , "FPT" ,
-  "USGS"     , "San Joaquin River near Vernalis"                , "11303500" , "SJR" ,
-  "DWR_CEMP" , "San Joaquin River McCune Station near Vernalis" , "SJR"      , "SJR" ,
-  "DWR_CEMP" , "Sacramento River at Rio Vista Bridge"           , "RVB"      , "RVB" ,
-  "USGS"     , "San Joaquin River at Jersey Point"              , "11337190" , "SJJ" ,
-  "DWR_CEMP" , "San Joaquin River at Prisoners Point"           , "PPT"      , "PPT" ,
-  "DWR_NCRO" , "Old River at Quimby Island near Bethel Island"  , "B9520000" , "ORQ" ,
-  "DWR_NCRO" , "Middle River near Holt"                         , "B9545800" , "HLT" ,
-  "DWR_NCRO" , "Old River near Bacon Island at USGS Pile"       , "B9525100" , "OBI" ,
-  "USGS"     , "Middle River at Middle River"                   , "11312676" , "MDM" ,
-  "USGS"     , "Old River near Byron"                           , "11313315" , "ORB" ,
-  "DWR_NCRO" , "Grant Line Canal near Clifton Court Forebay"    , "B9529500" , "GLC" ,
-  "DWR_NCRO" , "Old River at Tracy Wildlife Association"        , "B9537800" , "TWA"
+  ~data_source , ~station_full_name                               , ~station_id     , ~station_abbr ,
+  "USGS"       , "Sacramento River at Freeport"                   , "USGS-11447650" , "FPT"         ,
+  "USGS"       , "San Joaquin River near Vernalis"                , "USGS-11303500" , "SJR_USGS"    ,
+  "DWR_CEMP"   , "San Joaquin River McCune Station near Vernalis" , "SJR"           , "SJR_DWR"     ,
+  "DWR_CEMP"   , "Sacramento River at Rio Vista Bridge"           , "RVB"           , "RVB"         ,
+  "USGS"       , "San Joaquin River at Jersey Point"              , "USGS-11337190" , "SJJ"         ,
+  "DWR_CEMP"   , "San Joaquin River at Prisoners Point"           , "PPT"           , "PPT"         ,
+  "DWR_NCRO"   , "Old River at Quimby Island near Bethel Island"  , "B9520000"      , "ORQ"         ,
+  "DWR_NCRO"   , "Middle River near Holt"                         , "B9545800"      , "HLT"         ,
+  "DWR_NCRO"   , "Old River near Bacon Island at USGS Pile"       , "B9525100"      , "OBI"         ,
+  "USGS"       , "Middle River at Middle River"                   , "USGS-11312676" , "MDM"         ,
+  "USGS"       , "Old River near Byron"                           , "USGS-11313315" , "ORB"         ,
+  "DWR_NCRO"   , "Grant Line Canal near Clifton Court Forebay"    , "B9529500"      , "GLC"         ,
+  "DWR_NCRO"   , "Old River at Tracy Wildlife Association"        , "B9537800"      , "TWA"
 )
 
 # Convert to list for data downloads
 ls_stations <- df_stations |>
-  select(source, abbr, data_id) |>
-  nest(df_data = c(abbr, data_id)) |>
+  select(data_source, station_abbr, station_id) |>
+  nest(df_data = c(station_abbr, station_id)) |>
   mutate(df_data = map(df_data, deframe)) |>
   deframe()
 
@@ -61,12 +64,8 @@ ls_stations <- df_stations |>
 
 ## USGS --------------------------------------------------------------------------------------
 
-# Define end date
-end_date <- "2025-09-30"
-
 # Daily suspended sediment concentration
-ls_usgs_ssc <- ls_stations$USGS[c("FPT", "SJR")] |>
-  map(\(x) paste0("USGS-", x)) |>
+ls_usgs_ssc <- ls_stations$USGS[c("FPT", "SJR_USGS")] |>
   map(
     \(x) {
       read_waterdata_daily(
@@ -74,23 +73,33 @@ ls_usgs_ssc <- ls_stations$USGS[c("FPT", "SJR")] |>
         parameter_code = "80154",
         statistic_id = "00003",
         skipGeometry = TRUE,
-        time = paste0("../", end_date)
+        time = paste0("../", END_DATE)
       )
     }
   )
 
 # Instantaneous (15-min) turbidity data
-ls_usgs_turb <- ls_stations$USGS[!names(ls_stations$USGS) == "SJR"] |>
+ls_usgs_turb <- ls_stations$USGS[!names(ls_stations$USGS) == "SJR_USGS"] |>
+  map(\(x) str_remove(x, "^USGS-")) |>
   map(
     \(x) {
       readNWISuv(
         siteNumbers = x,
         parameterCd = "63680",
         tz = "Etc/GMT+8",
-        endDate = end_date
+        endDate = END_DATE
       )
     }
   )
+
+# Import and clean up station information
+sf_station_info_usgs <- read_waterdata_monitoring_location(
+  monitoring_location_id = ls_stations$USGS,
+  properties = c("monitoring_location_id", "geometry")
+)
+
+sf_station_info_usgs_c <- sf_station_info_usgs |>
+  rename(station_id = monitoring_location_id)
 
 ## DWR_CEMP ----------------------------------------------------------------------------------
 
@@ -109,10 +118,32 @@ ls_cemp <- stations_cemp |>
   map(\(x) paste0(x, ".bin")) |>
   map(\(x) read_csv(file.path(tempdir(), x)))
 
+# Import and clean up station information
+get_edi_data(edi_id = edi_id_cemp, entity_names = "Stations Metadata")
+df_station_info_cemp <- read_csv(file.path(tempdir(), "Stations Metadata.bin"))
+
+sf_station_info_cemp <- df_station_info_cemp |>
+  filter(`Station Acronym` %in% ls_stations$DWR_CEMP) |>
+  select(station_id = `Station Acronym`, Latitude, Longitude) |>
+  # Convert to sf object, assume all coordinates are in WGS84
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+
 ## DWR_NCRO ----------------------------------------------------------------------------------
 
 ls_ncro_turb <- ls_stations$DWR_NCRO |>
   map(\(x) get_cnra_cwq_data(x, parameters = "Turbidity"))
+
+# Import and clean up station information
+df_station_info_ncro <- read_csv(
+  "https://data.cnra.ca.gov/dataset/fcba3a88-a359-4a71-a58c-6b0ff8fdc53f/resource/c2b08f48-acfd-4a5b-9799-0f3e07d83192/download/stations.csv"
+)
+
+sf_station_info_ncro <- df_station_info_ncro |>
+  filter(station_number %in% ls_stations$DWR_NCRO) |>
+  select(station_id = station_number, latitude, longitude) |>
+  # Convert to sf object, assume all coordinates are in WGS84
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326)
+
 
 # Prepare and Aggregate Data -----------------------------------------------------------------
 
@@ -135,34 +166,40 @@ df_ncro_turb <- ls_ncro_turb |>
 # Combine and calculate daily averages and medians for continuous turbidity data
 df_turb_dv <- bind_rows(df_usgs_turb, df_cemp_turb, df_ncro_turb) |>
   drop_na(turbidity) |>
-  filter(date <= end_date) |>
+  filter(date <= END_DATE) |>
   summarize(
     turbidity_mean = mean(turbidity),
     turbidity_median = median(turbidity),
     .by = c(station_abbr, date)
-  ) |>
-  left_join(
-    df_stations |>
-      filter(!(source == "USGS" & abbr == "SJR")) |>
-      select(station_long = full_name, abbr),
-    by = join_by(station_abbr == abbr)
-  ) |>
-  relocate(station_long, .after = station_abbr)
+  )
 
 # Prepare SCC data for export
 df_usgs_ssc <- ls_usgs_ssc |>
   map(\(x) select(x, date = time, ssc = value)) |>
-  list_rbind(names_to = "station_abbr") |>
-  left_join(
-    df_stations |>
-      filter(source == "USGS") |>
-      select(station_long = full_name, abbr),
-    by = join_by(station_abbr == abbr)
+  list_rbind(names_to = "station_abbr")
+
+# Combine station information for export
+sf_station_info_all <-
+  bind_rows(
+    sf_station_info_usgs_c,
+    sf_station_info_cemp,
+    sf_station_info_ncro
   ) |>
-  relocate(station_long, .after = station_abbr)
+  left_join(df_stations, by = join_by(station_id)) |>
+  select(
+    dat_src = data_source,
+    abbr = station_abbr,
+    sta_id = station_id,
+    sta_fn = station_full_name,
+    geometry
+  )
 
 # Export Data ---------------------------------------------------------------------------------
 
 # Export turbidity and SSC data as .rds files
 df_turb_dv %>% saveRDS(here("data/processed/wq/turbidity_dv.rds"))
 df_usgs_ssc %>% saveRDS(here("data/processed/wq/ssc_dv.rds"))
+
+# Export station information as a shapefile
+sf_station_info_all |>
+  write_sf(here("data/processed/spatial/cont_wq_station_info_analysis.shp"))
