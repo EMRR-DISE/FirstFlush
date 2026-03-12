@@ -9,7 +9,9 @@ library(dataRetrieval)
 library(sf)
 # Make sure we are using `deltamapr` version 1.0.1, commit fe34697b3d1aaa2945bbfc647582a19e251abf67
 # install.packages("devtools")
-# devtools::install_github("InteragencyEcologicalProgram/deltamapr", ref = "fe34697b3d1aaa2945bbfc647582a19e251abf67")
+# devtools::install_github(
+# "InteragencyEcologicalProgram/deltamapr", ref = "fe34697b3d1aaa2945bbfc647582a19e251abf67"
+# )
 library(deltamapr)
 library(EDIutils)
 library(rlang)
@@ -21,44 +23,8 @@ library(conflicted)
 # Declare package conflict preferences
 conflicts_prefer(dplyr::filter())
 
-
-# Functions -----------------------------------------------------------------------------------
-
-# Get data entity names for specified EDI ID
-get_edi_data_entities <- function(edi_id) {
-  df_data_ent <- read_data_entity_names(edi_id)
-  inform(c(
-    "i" = paste0(
-      "Data entities for ",
-      edi_id,
-      " include:\n",
-      paste(df_data_ent$entityName, collapse = "\n"),
-      "\n"
-    )
-  ))
-  return(df_data_ent$entityName)
-}
-
-# Download specified data entities from an EDI package and save raw bytes files to a temporary
-# directory
-get_edi_data <- function(edi_id, entity_names) {
-  df_data_ent <- read_data_entity_names(edi_id)
-  df_data_ent_filt <- df_data_ent %>% filter(entityName %in% entity_names)
-
-  ls_data_raw <-
-    map(df_data_ent_filt$entityId, \(x) {
-      read_data_entity(edi_id, entityId = x)
-    }) %>%
-    set_names(df_data_ent_filt$entityName)
-
-  temp_dir <- tempdir()
-  for (i in 1:length(ls_data_raw)) {
-    file_raw <- file.path(temp_dir, glue("{names(ls_data_raw)[i]}.bin"))
-    con <- file(file_raw, "wb")
-    writeBin(ls_data_raw[[i]], con)
-    close(con)
-  }
-}
+# Source data functions
+source(here("code/data_processing/01_data_retrieve_process_functions.R"))
 
 
 # Define Spatial Extent -----------------------------------------------------------------------
