@@ -5,6 +5,7 @@ format: pdf
 editor: visual
 editor_options: 
   chunk_output_type: console
+bibliography: references.bib
 ---
 
 ## packages
@@ -30,14 +31,37 @@ library(tidybayes)
 
 ## beach seine data
 
+Insert -\> Citation -\> Zotero
+
+[@sturrock2019]
+
 Beach seine data from the Delta Juvenile Fish Monitoring Program (DJFMP). *United States Fish and Wildlife Service, J. Speegle, C. Macfarlane, E. Huber, D. Goodman, K. Erly, and R. Cook. 2026. Interagency Ecological Program: Over four decades of juvenile fish monitoring data from the San Francisco Estuary, collected by the Delta Juvenile Fish Monitoring Program, 1976-2025 ver 14. Environmental Data Initiative.* https://doi.org/10.6073/pasta/ad35c80cafd87ba928d3f37fa124ccaf (Accessed 2026-03-11).
 
 Note: Look at this data set too eventually. *United States Fish and Wildlife Service, J. Kirsch, M. Marshall, C. Johnston, A. Arrambide, and J. Speegle. 2025. Interagency Ecological Program and US Fish and Wildlife Service: Beach Seine Efficiency Study, collected by the Delta Juvenile Fish Monitoring Program, 2013-2018 ver 2. Environmental Data Initiative.* https://doi.org/10.6073/pasta/818b8bf1d93b81cc7c5124f9df81ce01 (Accessed 2026-03-11).
 
 ```{r load_data, eval=FALSE}
 # beach seine data
-beachsieneALL <- 
-  read_csv(here("salmon", "data", "raw", "seine_76_25.csv"))
+raw <- 
+  read_csv(here("salmon", "data", "raw", "seine_76_25.csv")) %>% 
+  # provide good names
+  clean_names() %>% 
+  # correct data type (eg factors)
+  # fix date & time variables, originally as chr
+  mutate(across(c(location:station_code, 
+                  method_code, 
+                  organism_code:common_name), factor),
+         date = mdy(sample_date),
+         time = times(sample_time),
+         .keep = "unused") %>% 
+  # generate a sample unit (unique seine event) code
+  group_by(station_code, date, time) %>% 
+  mutate(id_code = cur_group_id()) %>% 
+  relocate(c(date,time), .after = station_code) %>% 
+  relocate(id_code) %>% 
+  ungroup()
+
+write_rds(raw, here("salmon", "data", "processed", "raw.rds"))
+
 # naming conventions
 taxonomy <- 
   read_csv(
@@ -57,20 +81,6 @@ fish_codes <-
            Species != "<NA>") %>%
     distinct(IEPFishCode)
 
-# tidy data ----
-temp <-
-  beachsieneALL %>% 
-  # select fishes only (includes empty hauls--seines w no fishes of any spp)
-  filter(IEPFishCode %in% fish_codes$IEPFishCode) %>% 
-  # provide columns w good names
-  clean_names() %>% 
-  # fix date & time variables, originally as chr
-  mutate(date = mdy(sample_date), 
-         time = times(sample_time), 
-         .keep = "unused") %>% 
-  # reorder columns
-  relocate(date:time, .before = method_code)
-
 ```
 
 ## site selection
@@ -87,7 +97,7 @@ For the future, some minimum effort seems necessary, but thinking about the idea
 # arbitrarily select only those sites whose mean equaled or exceeded 18
 
 mean_effort <-
-  temp %>% 
+  raw %>% 
   group_by(location, region_code, station_code, year = year(date)) %>% 
   summarise(seine_hauls = n_distinct(station_code, date)) %>% 
   group_by(location, region_code, station_code) %>% 
@@ -96,6 +106,30 @@ mean_effort <-
 
 write_rds(mean_effort,
           here("salmon", "data", "processed", "mean_effort.rds"))
+
+# filter data to select only sites that were sampled every month of the year
+# ideally over the duration of the time series
+
+raw %>% 
+  group_by(station_code, month = month(date)) %>% 
+  # n=n() or n=n_distinct(id_code)?
+  #summarise(n = n()) %>% 
+  summarise(n = n_distinct(id_code)) %>% 
+  mutate(
+    month = month(month, label = TRUE)
+  )
+# n=n() gives
+# AM001S Jan n=961...spp or hauls?
+# n=n_distinct(id_code) gives
+# AMS001S Jan n=155...even that seems high! id_code should work here
+
+# this gets me the number of seines in January for every year AMS001S was sampled
+raw %>% 
+  filter(station_code == "AM001S", month(date) == "1") %>% 
+  group_by(station_code, id_code, date) %>% 
+  summarise(samples = sum(n_distinct(id_code))) %>% 
+  group_by(year = year(date)) %>% 
+  summarise(Jan_effort = sum(samples))
 
 ### reduce ----
 # identify sites to be retained
@@ -119,8 +153,8 @@ write_rds(selected_sites,
           here("salmon", "data", "processed", "selected_sites.rds"))
 
 # select data from those minimum effort sites and for complete water years (1976-10-01 onwards)
-temp <-
-  temp %>% 
+raw <-
+  raw %>% 
   filter(station_code %in% selected_sites$station_code,
          # limit to data collected during complete water years
          date >= "1976-10-01")
@@ -130,14 +164,30 @@ temp <-
 
 Add water year and day of water year to the data frame.
 
+Notes:
+
+-   trawl data (esp Chipps Island)
+
+-   try 1992+
+
+-   check time window (does NOT seem to be have been effective)
+
+-   spatial partitioning by rm, bin by region or subregion
+
+-   beach seine data should still be helpful for teasing out the source of these juveniles (Am R, Feather, SJR, etc)
+
+-   seine data useful for looking at the Delta rearing duration too
+
+-   don't worry now about run type
+
 ```{r}
 # add water year and day of water year
 # select data begining with WY 1976 
 # (Oct 1 1976 - Sep 30 1977) and ending with WY 2024 (Oct 1 2024 - end of 
 # data set (July 31, close enough to the proper end of the WY for our purposes))
 
-temp <-
-  temp %>% 
+raw <-
+  raw %>% 
   # add water year (wy) and day of water year (wd) variables
   mutate(
     # water year
@@ -162,7 +212,7 @@ Generate a 'seine' dataframe with
 ```{r}
 # pivot to simplify summing Chinook counts (including 0's) for each sample unit
 wide <-
-  temp %>% 
+  raw %>% 
   pivot_wider(
     # relies on 'sample_id' to distinguish among sample units, but retains environmental data
     id_cols = c(sample_id:time, water_temp),
@@ -178,6 +228,8 @@ wide <-
   dplyr::select(c(sample_id:water_temp, CHN))
 
 # pivot back to get daily counts for each sample unit for CHN including 0's
+# note that 'seine' includes only data for CHN...but should include all sample
+# units (ie unique combos of site+date+time)
 seine <- 
   wide %>% 
   pivot_longer(
