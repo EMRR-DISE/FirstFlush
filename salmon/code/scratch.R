@@ -95,25 +95,27 @@ ggplot(coverage2_full, aes(month_label, year, fill = factor(sampled))) +
 
 # 'good' sites
 good <- c("AM001S", "DS002S", "GS010E", "LP003E", "MK004W", "MR010W", "MS001N",
+          "OR003W", "OR014W", "OR019E", "0R023E",
           "SA001M", "SA004W", "SA007E", "SA008W", "SA009E", "SA010W", "SF014E",
-          "SJ001S", "SJ005N", "SJ032S", "SJ041N", "SJ051E","SJ056E", "SJ058W",
-          "SJ063W", "SP000W", "SP001W", "SP003E", "SR012W", "SR014W", "SR017E",
-          "SR024E", "SR043W", "SR049E", "SR060E", "SR071E", "SR080E", "SR090W",
-          "SR094E", "SR130E", "SR138E", "SR144W", "SS011N", "TM001N", "WD002W",
-          "XC001N")
+          "SJ001S", "SJ005N", "SJ026S", "SJ032S", "SJ041N", "SJ051E", "SJ056E",
+          "SJ058W","SJ063W", "SJ074W", "SJ083W",
+          "SP000W", "SP001W", "SP003E",
+          "SR012W", "SR014W", "SR017E", "SR024E", "SR043W", "SR049E", "SR060E",
+          "SR071E", "SR080E", "SR090W", "SR094E", "SR130E", "SR138E", "SR144W",
+          "SS011N", "TM001N", "WD002W", "XC001N")
 
 # filter to retain only 'good' sites (station_code)
-coverage2_good <-
-  coverage2_full %>%
+coverage_good <-
+  coverage_full %>%
   filter(station_code %in% good)
 
 # associate each site (station_code) with the appropriate region
-station_order <- coverage2_good %>%
+station_order <- coverage_good %>%
   distinct(station_code, region_label) %>%
   arrange(region_label, station_code)
 
 # set factor levels in the desired order
-coverage2_good <- coverage2_good %>%
+coverage_good <- coverage_good %>%
   mutate(
     station_code = factor(station_code,
                           levels = station_order$station_code)

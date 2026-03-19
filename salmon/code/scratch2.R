@@ -44,3 +44,21 @@ regular_sampling_efforts <- effort_summary %>%
 # View results
 regular_sampling_efforts
 
+# regularize -----
+# attempt to regularize 'coverage' for both month and year...
+# test with...
+
+df <-
+  tibble(station_code = c(rep("AM001S", 3), rep("SR010E", 3)),
+         year = c(1976, rep(1977,5)),
+         month = c(5, 6, 12, 2, 4, 5),
+         region = c(rep(2,3),rep(4,3)),
+         sampled = rep(1,6))
+
+df_regular <- df %>%
+  complete(
+    station_code,
+    year = min(year):max(year),
+    month = 1:12,
+    fill = list(sampled = 0)
+  )
