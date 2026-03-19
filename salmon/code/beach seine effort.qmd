@@ -1321,6 +1321,8 @@ raw <-
   mutate(id_code = cur_group_id()) %>% 
   relocate(id_code, station, location, date, time) %>% 
   ungroup()
+
+write_rds(raw, here("salmon/data/raw/raw.rds"))
 ```
 
 # data quality
@@ -1370,10 +1372,14 @@ coverage_irreg <- raw %>%
   # 'tag' months sampled
   mutate(sampled = 1)
 
+write_rds(coverage_irreg, here("salmon/data/processed/coverage_irreg.rds"))
+
 # create tibble of station and region for later use
 sta_reg <-
   coverage_irreg %>%
   distinct(station, region)
+
+write_rds(sta_reg, here("salmon/data/processed/sta_reg.rds"))
 
 # regularize ts
 
@@ -1384,6 +1390,7 @@ reg_labs <-
   tibble(region = factor(1:7),
          region_label = factor(c("Lower Sac", "N Delta", "Cen Delta", "S Delta",
                           "SJR", "SF & SP Bays", "Sac R")))
+write_rds(reg_labs, here("salmon/data/processed/reg_labs.rds"))
 
 coverage <-
   coverage_irreg %>% 
@@ -1413,6 +1420,7 @@ coverage <-
       "SJR", "S Delta", "SF & SP Bays"
     ))
 
+write_rds(coverage, here("salmon/data/processed/coverage.rds"))
 ```
 
 # plot
@@ -1500,6 +1508,7 @@ good <- c("AM001S", "DS002S", "GS010E", "LP003E", "MK004W", "MR010W", "MS001N",
           "SR071E", "SR080E", "SR090W", "SR094E", "SR130E", "SR138E", "SR144W",
           "SS011N", "TM001N", "WD002W", "XC001N")
 
+write_rds(good, here("salmon/data/processed/selected_site_codes.rds"))
 ```
 
 ## show selected sites
@@ -1507,6 +1516,7 @@ good <- c("AM001S", "DS002S", "GS010E", "LP003E", "MK004W", "MR010W", "MS001N",
 Plot the selected sites to show coverage.
 
 ```{r}
+
 # filter coverage data to retain only 'good' sites (station)
 selected <-
   # may be better to plot from the irregular time series?
@@ -1532,7 +1542,10 @@ selected <- selected %>%
     fill_region = factor(fill_region, levels = levels(region_label))
   )
 
-ggplot(selected, 
+write_rds(selected, here("salmon/data/processed/selected.rds"))
+
+heatmap_selected <-
+  ggplot(selected, 
        aes(month_label, year, fill = fill_region)) +
   geom_tile(color = "grey85") +
   facet_wrap(~station) +
@@ -1549,4 +1562,80 @@ ggplot(selected,
     axis.text.x = element_text(size = 7, angle = 90),
     axis.text.y = element_text(size = 7)
   )
+
+ggsave("heatmap_selected.png", 
+       path = here("salmon/plots"),
+       plot = heatmap_selected, width = 8, height = 6, dpi = 300)
+```
+
+# define regions
+
+Previously, I used the regions used in the DJFMP data, but, for the first flush work, our group has adopted regional boundaries that may differ from these. Here, I'm attempting to sort my beach sites into these regional polygons.
+
+```{r}
+# import Dave's regions shapefile
+sf_regions <- read_sf(here("data/processed/spatial/delta_regions.shp")) %>% clean_names()
+
+# retrieve DJFMP station metadata
+sample_sites <- read_csv(here("salmon/data/raw/sample_sites.csv"))
+
+# create stations dataframe w lat lon
+stations <-
+  selected %>% 
+  distinct(station) %>% 
+  left_join(sample_sites,
+            join_by(station == StationCode)) %>% 
+  mutate(lat = Latitude,
+         lon = Longitude,
+         .keep = "unused") %>% 
+  select(-MethodCode) %>% 
+  clean_names()
+
+# convert stations to an sf object
+stations_sf <- 
+  st_as_sf(stations,
+           coords = c("lon", "lat"),
+           crs = 4326) # WGS84 lat/long
+
+# transform station points (NAD83 / UTM zone 10N)
+stations_sf <- st_transform(stations_sf, st_crs(sf_regions))
+
+# spatially join stations to regions
+stations_with_regions <- st_join(stations_sf, sf_regions) %>% clean_names()
+
+ggplot() +
+  geom_sf(data = sf_regions, fill = "grey95", color = "grey60") +
+  geom_sf(
+    data = stations_with_regions,
+    aes(color = region),
+    size = 2
+  ) +
+  labs(
+    title = "Stations Colored by Region",
+    color = "Region"
+  ) +
+  theme_bw()
+
+
+
+
+############
+# Import continuous WQ station coordinates
+sf_stations <- read_sf(here("data/processed/spatial/cont_wq_stations.shp"))
+
+# Import selected beach seine station metadata
+df_metadata <- readRDS(here("salmon/"))
+
+# Add metadata to station coordinates
+sf_stations_c1 <- sf_stations %>%
+  left_join(df_metadata, by = join_by(Source, Station_ID)) %>%
+  relocate(Station_Name, .after = Station_ID) %>%
+  mutate(across(where(is.POSIXct), \(x) format(x, "%Y-%m-%d")))
+
+# Import regions shapefile
+sf_regions <- read_sf(here("data/processed/spatial/delta_regions.shp"))
+
+# Create color palettes for station points (using Source) and region polygons
+pal_stations <- plasma(n = length(unique(sf_stations_c1$Source)))
+pal_regions <- color("muted")(length(unique(sf_regions$Region)))
 ```
