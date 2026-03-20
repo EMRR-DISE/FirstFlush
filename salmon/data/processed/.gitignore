@@ -1,3 +1,10 @@
 raw.rds
 test.csv
 coverage.rds
+coverage_irreg.rds
+reg_labs.rds
+selected.rds
+selected_site_codes.rds
+selected_sites.rds
+sta_reg.rds
+stations_with_regions.csv
