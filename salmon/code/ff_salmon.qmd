@@ -186,6 +186,9 @@ daily_cum <-
   ungroup() %>% 
   arrange(wy, wd)
 
+daily_cum92 <-
+  daily_cum %>% 
+  filter(wy >= 1992)
 ```
 
 ## accumulation curves
@@ -212,7 +215,29 @@ accumulation_curves <-
 
 # outlier is 1977
 accumulation_curves
+
+# limit data to 1992+
+accumulation_curves92 <-
+  ggplot(daily_cum92,
+       aes(x = wd,
+           y = cum_percent,
+           group = wy,
+           color = wy)) +         
+  geom_line() +
+  geom_hline(yintercept = c(10, 50, 90),
+             linetype = "dashed") +
+  scale_color_viridis_c(option = "mako", direction = -1) +
+  labs(x = "Day of Water Year",
+       y = "Cumulative % of Annual Total",
+       title = "Juvenile Chinook Accumulation Curves",
+       subtitle = "water years 1992-2024",
+       color = "water year") +
+  theme_bw()
+
+accumulation_curves92
 ```
+
+If there's a trend post-1992, it's hard to see in the accumulation curves.
 
 ## benchmarks
 
@@ -251,6 +276,10 @@ pctl_days_red <-
   pctl_days %>% 
   filter(wy != "1977")
 
+pctl_days_92 <-
+  pctl_days %>% 
+  filter(wy >= 1992)
+
 # figure shows the day of the water year for each benchmark (10, 50, 90%) for each year
 
 benchmark_trends <-
@@ -276,6 +305,32 @@ benchmark_trends <-
   theme_bw()
 
 benchmark_trends
+
+# benchmark trends using data from 1992+
+benchmark_trends92 <-
+  pctl_days %>% 
+  filter(wy >= 1992) %>% 
+  ggplot(
+    # color points according to threshold (10, 50, 90%)
+    aes(x = wy, y = wd, color = percentile)
+  ) +
+  geom_point(size = 4) +
+  scale_color_fish(discrete = TRUE,
+                  option = "Oncorhynchus_tshawytscha",
+                  alpha = 0.6) +
+  geom_smooth(data = pctl_days_92,
+              alpha = 0.2,
+              # show linear trends
+              method = "lm",
+              se = TRUE) +
+  labs(title = "Chinook Salmon Outmigration Timing",
+       subtitle = "water years 1992-2024",
+       x = "Water Year",
+       y = "Day of the Water Year",
+       color = "Percentile") +
+  theme_bw()
+
+benchmark_trends92
 ```
 
 I found that, over time (1978-2025), all three thresholds were reached earlier (benchmark_trends). To explore this relationship, I modeled the timing for each benchmark (10, 50 and 90% of each year's total outmigrants) as a function of the water year.
@@ -342,6 +397,80 @@ m.day50.wy %>%
   summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
 
 m.day90.wy %>%
+  spread_draws(b_wy) %>%
+  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
+```
+
+### limited data
+
+I ran those analyses again, limiting them to data from water year 1992 on.
+
+```{r}
+#| include: false
+
+percentile_days92 <-
+  percentile_days %>% 
+  filter(wy >= 1992)
+
+# reaching the 10% benchmark
+m2.day10.wy <- 
+  brm(data = percentile_days92, # use the percentile_days92 data
+      # use a gaussian (normal) distribution
+      family= gaussian,
+      # specify the model
+      day_10 ~ 1 + wy,
+      # specify parameters for executing the Markov chains
+      iter = 2000, warmup= 1000, chains= 4, cores=4,
+      # setting the "seed" determines which randomnumbers will get sampled
+      # so that team gets the same results when running the model
+      seed = 42,
+      file = here("salmon/results/m2.day10.wy"))
+
+# reaching the 50% benchmark
+m2.day50.wy <- 
+  brm(data = percentile_days92, 
+      # Choose a gaussian (normal) distribution
+      family= gaussian,
+      day_50 ~ 1 + wy,
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 42,
+      file = here("salmon/results/m2.day50.wy"))
+
+# reaching the 90% benchmark
+m2.day90.wy <- 
+  brm(data = percentile_days92, 
+      family= gaussian,
+      day_90 ~ 1 + wy,
+      iter = 2000, warmup = 1000, chains = 4, cores =4,
+      seed = 42,
+      file = here("salmon/results/m2.day90.wy"))
+
+```
+
+```{r}
+summary(m2.day10.wy)
+summary(m2.day50.wy)
+summary(m2.day90.wy)
+```
+
+```{r}
+plot(m2.day10.wy)
+plot(m2.day50.wy)
+plot(m2.day90.wy)
+```
+
+```{r}
+# model results aren't encouraging, but let's calc the prob that the slope is less than 0 just for fun
+
+m2.day10.wy %>%
+  spread_draws(b_wy) %>%
+  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
+
+m2.day50.wy %>%
+  spread_draws(b_wy) %>%
+  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
+
+m2.day90.wy %>%
   spread_draws(b_wy) %>%
   summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
 ```

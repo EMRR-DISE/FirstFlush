@@ -62,3 +62,4 @@ df_regular <- df %>%
     month = 1:12,
     fill = list(sampled = 0)
   )
+
