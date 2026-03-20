@@ -42,30 +42,13 @@ Note: Look at this data set too eventually. *United States Fish and Wildlife Ser
 ```{r load_data, eval=FALSE}
 # beach seine data
 raw <- 
-  read_csv(here("salmon", "data", "raw", "seine_76_25.csv")) %>% 
-  # provide good names
-  clean_names() %>% 
-  # correct data type (eg factors)
-  # fix date & time variables, originally as chr
-  mutate(across(c(location:station_code, 
-                  method_code, 
-                  organism_code:common_name), factor),
-         date = mdy(sample_date),
-         time = times(sample_time),
-         .keep = "unused") %>% 
-  # generate a sample unit (unique seine event) code
-  group_by(station_code, date, time) %>% 
-  mutate(id_code = cur_group_id()) %>% 
-  relocate(c(date,time), .after = station_code) %>% 
-  relocate(id_code) %>% 
-  ungroup()
-
-write_rds(raw, here("salmon", "data", "processed", "raw.rds"))
+  read_rds(here("salmon/data/raw/raw.rds"))
 
 # naming conventions
 taxonomy <- 
   read_csv(
   here("salmon", "data", "raw", "taxonomy.csv"))
+
 # site information
 sample_sites <- 
   read_csv(
@@ -85,77 +68,19 @@ fish_codes <-
 
 ## site selection
 
-Calculate the average *annual* number of samples (seine hauls) at each site and used this to (rather arbitrarily) determine which sites were used with sufficient frequency to include. Only sites that were sampled an average of 18 times per year or more were included in the analyses below.
-
-For the future, some minimum effort seems necessary, but thinking about the ideal spatial distribution of sites may be just as important. Sites should be along the principal outmigration corridors, and some may be more or less susceptible to large scale flow events, including first flush, than others. Tracking the downstream process may also be possible by including site position with regard to proximity to the Golden Gate.
+Refer to 'beach seine effort.qmd' for information on site selection.
 
 ```{r}
-## site selection -----
 
-### effort -----
-# calc the mean number of hauls at each site
-# arbitrarily select only those sites whose mean equaled or exceeded 18
-
-mean_effort <-
-  raw %>% 
-  group_by(location, region_code, station_code, year = year(date)) %>% 
-  summarise(seine_hauls = n_distinct(station_code, date)) %>% 
-  group_by(location, region_code, station_code) %>% 
-  summarise(mean = mean(seine_hauls)) %>% 
-  ungroup()
-
-write_rds(mean_effort,
-          here("salmon", "data", "processed", "mean_effort.rds"))
-
-# filter data to select only sites that were sampled every month of the year
-# ideally over the duration of the time series
-
-raw %>% 
-  group_by(station_code, month = month(date)) %>% 
-  # n=n() or n=n_distinct(id_code)?
-  #summarise(n = n()) %>% 
-  summarise(n = n_distinct(id_code)) %>% 
-  mutate(
-    month = month(month, label = TRUE)
-  )
-# n=n() gives
-# AM001S Jan n=961...spp or hauls?
-# n=n_distinct(id_code) gives
-# AMS001S Jan n=155...even that seems high! id_code should work here
-
-# this gets me the number of seines in January for every year AMS001S was sampled
-raw %>% 
-  filter(station_code == "AM001S", month(date) == "1") %>% 
-  group_by(station_code, id_code, date) %>% 
-  summarise(samples = sum(n_distinct(id_code))) %>% 
-  group_by(year = year(date)) %>% 
-  summarise(Jan_effort = sum(samples))
-
-### reduce ----
-# identify sites to be retained
-selected_sites <-
-  mean_effort %>% 
-  filter(mean >= 18) %>% 
-  left_join(sample_sites, 
-            join_by(station_code == StationCode),
-            # only keys (sites) from mean_effort are retained
-            keep = FALSE,
-            # drop unmatched dt5 rows
-            unmatched = "drop",
-            # expects each row in mean_effort matches at most 1 row in dt5
-            relationship = "many-to-one") %>% 
-  dplyr::select(-c(MethodCode, Location)) %>% 
-  relocate(Latitude:Longitude, .after = region_code) %>% 
-  # location is NOT unique; retained in case helps with orientation
-  clean_names()
-
-write_rds(selected_sites,
-          here("salmon", "data", "processed", "selected_sites.rds"))
+# list of beach seine station codes identified minimally adequate for 
+# temporal coverage
+good <- 
+  tibble(station = read_rds(here("salmon/data/processed/selected_site_codes.rds")))
 
 # select data from those minimum effort sites and for complete water years (1976-10-01 onwards)
-raw <-
+dat <-
   raw %>% 
-  filter(station_code %in% selected_sites$station_code,
+  filter(station %in% good$station,
          # limit to data collected during complete water years
          date >= "1976-10-01")
 ```
@@ -186,19 +111,19 @@ Notes:
 # (Oct 1 1976 - Sep 30 1977) and ending with WY 2024 (Oct 1 2024 - end of 
 # data set (July 31, close enough to the proper end of the WY for our purposes))
 
-raw <-
-  raw %>% 
+dat <-
+  dat %>% 
   # add water year (wy) and day of water year (wd) variables
   mutate(
     # water year
-    wy = calcWaterYear(date),
+    wy = dataRetrieval::calcWaterYear(date),
     # day of water year (wd), wyMonth=10L bc water year begins Oct 1
-    wd = get_waterYearDay(date, wyMonth = 10L)) %>% 
+    wd = EflowStats::get_waterYearDay(date, wyMonth = 10L)) %>% 
   # reorg & select columns
   relocate(wy:wd, .after = date) %>% 
-  dplyr::select(c(location:water_temp, organism_code, fork_length, race_by_length, count)) %>% 
+  select(c(station:water_temp, organism_code, fork_length, race_by_length, count)) %>% 
   # add 'sample_code' to identify each unique seine event
-  group_by(date, time, station_code) %>% 
+  group_by(date, time, station) %>% 
   mutate(sample_id = cur_group_id()) %>% 
   ungroup() %>% 
   relocate(sample_id)
@@ -212,7 +137,7 @@ Generate a 'seine' dataframe with
 ```{r}
 # pivot to simplify summing Chinook counts (including 0's) for each sample unit
 wide <-
-  raw %>% 
+  dat %>% 
   pivot_wider(
     # relies on 'sample_id' to distinguish among sample units, but retains environmental data
     id_cols = c(sample_id:time, water_temp),
@@ -225,7 +150,7 @@ wide <-
     # sum counts if multiple matches
     values_fn = sum
   ) %>% 
-  dplyr::select(c(sample_id:water_temp, CHN))
+  select(c(sample_id:water_temp, CHN))
 
 # pivot back to get daily counts for each sample unit for CHN including 0's
 # note that 'seine' includes only data for CHN...but should include all sample
@@ -369,8 +294,8 @@ m.day10.wy <-
       iter = 2000, warmup= 1000, chains= 4, cores=4,
       # setting the "seed" determines which randomnumbers will get sampled
       # so that team gets the same results when running the model
-      seed = 4,
-      file = here("results", "m.day10.wy"))
+      seed = 42,
+      file = here("salmon/results/m.day10.wy"))
 
 # reaching the 50% benchmark
 m.day50.wy <- 
@@ -379,8 +304,8 @@ m.day50.wy <-
       family= gaussian,
       day_50 ~ 1 + wy,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 4,
-      file = here("results", "m.day50.wy"))
+      seed = 42,
+      file = here("salmon/results/m.day50.wy"))
 
 # reaching the 90% benchmark
 m.day90.wy <- 
@@ -388,8 +313,8 @@ m.day90.wy <-
       family= gaussian,
       day_90 ~ 1 + wy,
       iter = 2000, warmup = 1000, chains = 4, cores =4,
-      seed = 4,
-      file = here("results", "m.day90.wy"))
+      seed = 42,
+      file = here("salmon/results/m.day90.wy"))
 ```
 
 ```{r}
@@ -423,11 +348,11 @@ m.day90.wy %>%
 
 I ran three separate Bayesian linear models to look at the timing of juvenile salmon outmigration, represented by the day of the water year when those three benchmarks had been reached over the course of the time series. Each model used a Gaussian distribution with water year as the predictor. Our 10% and 50% models' credible intervals provide strong evidence that the slopes are different from zero, however, the upper limit of the 90% model is at 0 exactly which gives less certainty to this slope's difference from zero and an overall weaker trend.
 
--   For the 10% accumulation model, there was an estimated slope of -0.75 days per year
+-   For the 10% accumulation model, there was an estimated slope of -0.69 days per year (probability the slope is \<0 = 0.999)
 
--   For the 50% accumulation model, there was an estimated slope of -0.68 days per year
+-   For the 50% accumulation model, there was an estimated slope of -0.70 days per year (probability the slope is \<0 = 1.000)
 
--   For the 90% accumulation model, there was an estimated slope -0.37 days per year
+-   For the 90% accumulation model, there was an estimated slope -0.33 days per year (probability the slope is \<0 = 0.955)
 
 ## water year type
 
@@ -437,7 +362,7 @@ I also attempted to determine if there was an effect of water year type on the t
 ## year type ----
 # first, add water year type to the percentile_days df
 wy_type <- 
-  read_excel(here("salmon", "data", "raw", "cdec-water-year-type-jun-2025.xlsx")) %>% 
+  read_excel(here("salmon/data/raw/cdec-water-year-type-jun-2025.xlsx")) %>% 
   mutate(wy = WY,
          wyt = factor(WYT),
          watershed = factor(Area),
@@ -459,7 +384,7 @@ pctl_days_wyt <-
   relocate(wy_centered, .after = wy)
 
 write_rds(pctl_days_wyt, 
-          here("salmon", "data", "processed", "pctl_days_wyt.rds"))
+          here("salmon/data/processed/pctl_days_wyt.rds"))
 
 ### wy boxplot -----
 pctl_days_wyt %>% 
@@ -479,9 +404,10 @@ m1.day10.wy.wyt <-
         filter(wy <= 2024),
       family = gaussian,
       wd ~ 0 + wy_centered + wyt, 
-      iter = 10000, warmup = 1000, chains = 4, cores = 4, seed = 42,
+      iter = 10000, warmup = 1000, chains = 4, cores = 4, 
+      seed = 42,
       # save fitted model (this one w the wy centered)
-      file = here("data", "processed", "m2.day10.wy.wyt")
+      file = here("salmon/results/m2.day10.wy.wyt")
   )
 
 summary(m1.day10.wy.wyt) 
@@ -501,20 +427,24 @@ m2.day10.wy.wyt <-
         filter(wy <= 2024),
       family = gaussian,
       wd ~ 0 + wy_centered * wyt, 
-      iter = 10000, warmup = 1000, chains = 4, cores = 4, seed = 42,
+      iter = 10000, warmup = 1000, chains = 4, cores = 4, 
+      seed = 42,
       # save fitted model (this one w the wy centered)
-      file = here("data", "processed", "m3.day10.wy.wyt")
+      file = here("salmon/results/m3.day10.wy.wyt")
   )
 
 summary(m2.day10.wy.wyt)
 plot(m2.day10.wy.wyt)
 ```
 
-Posterior predictive check...see if the model's "noise" (sigma) matches the actual spread of your data
+These results are not so solid: All four of the interaction terms span 0.
+
+Posterior predictive check...see if the model's "noise" (sigma) matches the actual spread of your data. These look good for both models.
 
 ```{r}
 # posterior predictive check
 pp_check(m1.day10.wy.wyt)
+pp_check(m2.day10.wy.wyt)
 ```
 
 Because the model simulations (blue lines) approximate the actual data fairly well (they aren't wider or narrower), this sigma seems to be a good estimation of the error.

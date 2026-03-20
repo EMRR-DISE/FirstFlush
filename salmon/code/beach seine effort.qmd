@@ -14,10 +14,12 @@ I generated heatmaps to show the spatial and temporal effort put towards beach s
 #| message: false
 #| warning: false
 
+library(here)
 library(tidyverse)
 library(janitor)
 library(chron)
 library(gridExtra)
+library(sf)
 ```
 
 Download DJFMP data; beach seine data are in 'dt3'. Remove the superfluous objects from downloading the data in your workspace.
@@ -1334,6 +1336,8 @@ Data quality: potential issues with seine volume, turbidity, turbidity_fnu, spec
 #| message: false
 #| warning: false
 
+raw <- read_rds(here("salmon/data/processed/raw.rds"))
+
 vol <- ggplot(raw,
               aes(volume)) +
   geom_histogram()
@@ -1390,6 +1394,7 @@ reg_labs <-
   tibble(region = factor(1:7),
          region_label = factor(c("Lower Sac", "N Delta", "Cen Delta", "S Delta",
                           "SJR", "SF & SP Bays", "Sac R")))
+
 write_rds(reg_labs, here("salmon/data/processed/reg_labs.rds"))
 
 coverage <-
@@ -1603,6 +1608,28 @@ stations_sf <- st_transform(stations_sf, st_crs(sf_regions))
 # spatially join stations to regions
 stations_with_regions <- st_join(stations_sf, sf_regions) %>% clean_names()
 
+stations_ll <- 
+  stations_with_regions %>% 
+  st_transform(4326) %>% 
+  mutate(
+    lon = st_coordinates(.)[,1],
+    lat = st_coordinates(.)[,2])
+
+stations_final <- 
+  stations_ll %>% 
+  mutate(region = 
+           case_when(
+      is.na(region) & lat > 38.5      ~ "SAC",
+      is.na(region) & lon > -121.6    ~ "SJR",
+      is.na(region) & lon < -122.0    ~ "Bay",
+      TRUE                            ~ region))
+
+# check
+stations_final %>% 
+  filter(region %in% c("SAC", "SJR", "Bay")) %>% 
+  select(station, region)
+
+# map w sites outside ff regions gray
 ggplot() +
   geom_sf(data = sf_regions, fill = "grey95", color = "grey60") +
   geom_sf(
@@ -1616,26 +1643,19 @@ ggplot() +
   ) +
   theme_bw()
 
+# map regions include sites outside ff region
+ggplot() +
+  geom_sf(data = sf_regions, fill = "grey95", color = "grey60") +
+  geom_sf(
+    data = stations_final,
+    aes(color = region),
+    size = 2
+  ) +
+  labs(
+    title = "Stations Colored by Region",
+    color = "Region"
+  ) +
+  theme_bw()
 
 
-
-############
-# Import continuous WQ station coordinates
-sf_stations <- read_sf(here("data/processed/spatial/cont_wq_stations.shp"))
-
-# Import selected beach seine station metadata
-df_metadata <- readRDS(here("salmon/"))
-
-# Add metadata to station coordinates
-sf_stations_c1 <- sf_stations %>%
-  left_join(df_metadata, by = join_by(Source, Station_ID)) %>%
-  relocate(Station_Name, .after = Station_ID) %>%
-  mutate(across(where(is.POSIXct), \(x) format(x, "%Y-%m-%d")))
-
-# Import regions shapefile
-sf_regions <- read_sf(here("data/processed/spatial/delta_regions.shp"))
-
-# Create color palettes for station points (using Source) and region polygons
-pal_stations <- plasma(n = length(unique(sf_stations_c1$Source)))
-pal_regions <- color("muted")(length(unique(sf_regions$Region)))
 ```
