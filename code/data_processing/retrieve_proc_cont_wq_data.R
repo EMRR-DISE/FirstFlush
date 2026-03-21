@@ -23,6 +23,7 @@
 # Load packages
 library(tidyverse)
 library(dataRetrieval)
+library(sf)
 library(here)
 library(conflicted)
 
@@ -98,8 +99,16 @@ sf_station_info_usgs <- read_waterdata_monitoring_location(
   properties = c("monitoring_location_id", "geometry")
 )
 
-sf_station_info_usgs_c <- sf_station_info_usgs |>
-  rename(station_id = monitoring_location_id)
+df_station_info_usgs <-
+  bind_cols(
+    st_drop_geometry(sf_station_info_usgs),
+    st_coordinates(sf_station_info_usgs)
+  ) |>
+  rename(
+    station_id = monitoring_location_id,
+    longitude = X,
+    latitude = Y
+  )
 
 ## DWR_CEMP ----------------------------------------------------------------------------------
 
@@ -122,11 +131,10 @@ ls_cemp <- stations_cemp |>
 get_edi_data(edi_id = edi_id_cemp, entity_names = "Stations Metadata")
 df_station_info_cemp <- read_csv(file.path(tempdir(), "Stations Metadata.bin"))
 
-sf_station_info_cemp <- df_station_info_cemp |>
+df_station_info_cemp_c <- df_station_info_cemp |>
   filter(`Station Acronym` %in% ls_stations$DWR_CEMP) |>
   select(station_id = `Station Acronym`, Latitude, Longitude) |>
-  # Convert to sf object, assume all coordinates are in WGS84
-  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+  rename_with(str_to_lower)
 
 ## DWR_NCRO ----------------------------------------------------------------------------------
 
@@ -138,11 +146,9 @@ df_station_info_ncro <- read_csv(
   "https://data.cnra.ca.gov/dataset/fcba3a88-a359-4a71-a58c-6b0ff8fdc53f/resource/c2b08f48-acfd-4a5b-9799-0f3e07d83192/download/stations.csv"
 )
 
-sf_station_info_ncro <- df_station_info_ncro |>
+df_station_info_ncro_c <- df_station_info_ncro |>
   filter(station_number %in% ls_stations$DWR_NCRO) |>
-  select(station_id = station_number, latitude, longitude) |>
-  # Convert to sf object, assume all coordinates are in WGS84
-  st_as_sf(coords = c("longitude", "latitude"), crs = 4326)
+  select(station_id = station_number, latitude, longitude)
 
 
 # Prepare and Aggregate Data -----------------------------------------------------------------
@@ -179,27 +185,28 @@ df_usgs_ssc <- ls_usgs_ssc |>
   list_rbind(names_to = "station_abbr")
 
 # Combine station information for export
-sf_station_info_all <-
+df_station_info_all <-
   bind_rows(
-    sf_station_info_usgs_c,
-    sf_station_info_cemp,
-    sf_station_info_ncro
+    df_station_info_usgs,
+    df_station_info_cemp_c,
+    df_station_info_ncro_c
   ) |>
   left_join(df_stations, by = join_by(station_id)) |>
   select(
-    dat_src = data_source,
-    abbr = station_abbr,
-    sta_id = station_id,
-    sta_fn = station_full_name,
-    geometry
+    data_source,
+    station_abbr,
+    station_id,
+    station_full_name,
+    latitude,
+    longitude
   )
 
 # Export Data ---------------------------------------------------------------------------------
 
-# Export turbidity and SSC data as .rds files
-df_turb_dv %>% saveRDS(here("data/processed/wq/turbidity_dv.rds"))
-df_usgs_ssc %>% saveRDS(here("data/processed/wq/ssc_dv.rds"))
+# Export data as .rds files
+fp_export <- here("data/processed/wq")
 
-# Export station information as a shapefile
-sf_station_info_all |>
-  write_sf(here("data/processed/spatial/cont_wq_station_info_analysis.shp"))
+df_turb_dv %>% saveRDS(file.path(fp_export, "turbidity_dv.rds"))
+df_usgs_ssc %>% saveRDS(file.path(fp_export, "ssc_dv.rds"))
+df_station_info_all |>
+  saveRDS(file.path(fp_export, "cont_wq_station_info_analysis.rds"))
