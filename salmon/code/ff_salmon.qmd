@@ -31,12 +31,6 @@ library(tidybayes)
 
 ## beach seine data
 
-Insert -\> Citation -\> Zotero
-
-[@sturrock2019]
-
-Beach seine data from the Delta Juvenile Fish Monitoring Program (DJFMP). *United States Fish and Wildlife Service, J. Speegle, C. Macfarlane, E. Huber, D. Goodman, K. Erly, and R. Cook. 2026. Interagency Ecological Program: Over four decades of juvenile fish monitoring data from the San Francisco Estuary, collected by the Delta Juvenile Fish Monitoring Program, 1976-2025 ver 14. Environmental Data Initiative.* https://doi.org/10.6073/pasta/ad35c80cafd87ba928d3f37fa124ccaf (Accessed 2026-03-11).
-
 Note: Look at this data set too eventually. *United States Fish and Wildlife Service, J. Kirsch, M. Marshall, C. Johnston, A. Arrambide, and J. Speegle. 2025. Interagency Ecological Program and US Fish and Wildlife Service: Beach Seine Efficiency Study, collected by the Delta Juvenile Fish Monitoring Program, 2013-2018 ver 2. Environmental Data Initiative.* https://doi.org/10.6073/pasta/818b8bf1d93b81cc7c5124f9df81ce01 (Accessed 2026-03-11).
 
 ```{r load_data, eval=FALSE}
@@ -46,13 +40,13 @@ raw <-
 
 # naming conventions
 taxonomy <- 
-  read_csv(
-  here("salmon", "data", "raw", "taxonomy.csv"))
+  read_rds(
+  here("salmon/data/raw/dt4.rds"))
 
 # site information
 sample_sites <- 
-  read_csv(
-    here("salmon", "data", "raw", "sample_sites.csv"))
+  read_rds(
+    here("salmon/data/raw/dt5.rds"))
 
 # pull all IEP fish codes out to help with filtering 
 # for fish data only (ie no inverts)
@@ -121,7 +115,7 @@ dat <-
     wd = EflowStats::get_waterYearDay(date, wyMonth = 10L)) %>% 
   # reorg & select columns
   relocate(wy:wd, .after = date) %>% 
-  select(c(station:water_temp, organism_code, fork_length, race_by_length, count)) %>% 
+  dplyr::select(c(station:water_temp, organism_code, fork_length, race_by_length, count)) %>% 
   # add 'sample_code' to identify each unique seine event
   group_by(date, time, station) %>% 
   mutate(sample_id = cur_group_id()) %>% 
@@ -130,54 +124,46 @@ dat <-
 
 ```
 
-### daily counts
+## daily counts
 
 Generate a 'seine' dataframe with
 
 ```{r}
 # pivot to simplify summing Chinook counts (including 0's) for each sample unit
-wide <-
+seine <-
   dat %>% 
   pivot_wider(
     # relies on 'sample_id' to distinguish among sample units, but retains environmental data
     id_cols = c(sample_id:time, water_temp),
     # columns for all fish spp (only CHN needed for this analysis)
     names_from = organism_code,
-    # log number of for each seine (sample_id)
+    # log number of each speciesxfork_length for each seine (sample_id)
     values_from = count,
     # if no matches, enter '0'
     values_fill = 0,
     # sum counts if multiple matches
     values_fn = sum
   ) %>% 
-  select(c(sample_id:water_temp, CHN))
-
-# pivot back to get daily counts for each sample unit for CHN including 0's
-# note that 'seine' includes only data for CHN...but should include all sample
-# units (ie unique combos of site+date+time)
-seine <- 
-  wide %>% 
-  pivot_longer(
-  cols = "CHN",
-  names_to = "CHN",
-  values_to = "count")
+  dplyr::select(c(sample_id:water_temp, CHN))
 
 ### daily counts -----
 # aggregate to daily totals bc freq >>1 seine per day
-daily <- 
+# note that this will obscure potential differences among locations
+
+daily <-
   seine %>%
   group_by(wy, wd) %>%
   summarise(
-    daily_total = sum(count, na.rm = TRUE),
+    daily_total = sum(CHN, na.rm = TRUE),
     .groups = "drop"
   )
 
-### cumulative percent -----
+### cumulative percent------
 # calc cumulative percentage for each wy
-daily_cum <- 
-  daily %>%
-  group_by(wy) %>%
-  arrange(wd) %>%
+daily_cum <-
+  daily %>% 
+  group_by(wy) %>% 
+  arrange(wd) %>% 
   mutate(
     annual_total = sum(daily_total),
     cum_total = cumsum(daily_total),
@@ -189,6 +175,21 @@ daily_cum <-
 daily_cum92 <-
   daily_cum %>% 
   filter(wy >= 1992)
+
+# calc cumulative percentage for each wy but limited to the period from Jan 1-Mar 31
+# Jan 1 is wd 93; Mar 31 is wd 182 (leap years, it's 183 but I'm going to ignore this)
+
+daily_cum_limited <-
+  daily %>% 
+  group_by(wy) %>% 
+  arrange(wd) %>% 
+  mutate(
+    jan_mar_total = sum(daily_total),
+    cum_total = cumsum(daily_total),
+    cum_percent = 100 * cum_total / jan_mar_total
+  ) %>% 
+  ungroup() %>% 
+  arrange(wy, wd)
 ```
 
 ## accumulation curves
@@ -235,9 +236,29 @@ accumulation_curves92 <-
   theme_bw()
 
 accumulation_curves92
+
+# limit the data to January - March
+accumulation_curves_limited <-
+  ggplot(daily_cum_limited,
+       aes(x = wd,
+           y = cum_percent,
+           group = wy,
+           color = wy)) +         
+  geom_line() +
+  geom_hline(yintercept = c(10, 50, 90),
+             linetype = "dashed") +
+  scale_color_viridis_c(option = "mako", direction = -1) +
+  labs(x = "Day of Water Year",
+       y = "Cumulative % of Total",
+       title = "Juvenile Chinook Accumulation Curves",
+       subtitle = "January - March only",
+       color = "water year") +
+  theme_bw()
+
+accumulation_curves_limited
 ```
 
-If there's a trend post-1992, it's hard to see in the accumulation curves.
+If there's a trend post-1992, it's hard to see in the accumulation curves, but, when you look at the curves generated from January-March only, it looks pretty similar to the raw data from all years and months. What to do about the data from 1977, the second driest year in California history (1924 had lower recorded precipitation) and the year with the lowest state-wide runoff?
 
 ## benchmarks
 
@@ -263,9 +284,29 @@ percentile_days <-
     .groups = "drop"
   )
 
+# gen df of water year days when threshold reach for each year, using data from
+# January - March only
+percentile_days_limited <- 
+  daily_cum_limited %>%
+  group_by(wy) %>%
+  summarise(
+    day_10 = min(wd[cum_percent >= 10]),
+    day_50 = min(wd[cum_percent >= 50]),
+    day_90 = min(wd[cum_percent >= 90]),
+    .groups = "drop"
+  )
+
 # pivot data to long format to facilitate graphics
 pctl_days <-
   percentile_days %>% 
+  pivot_longer(cols = c(day_10, day_50, day_90), 
+               names_to = "percentile", 
+               values_to = "wd") %>% 
+  mutate(percentile = factor(percentile))
+
+# same as above, but with Jan-Mar data only
+pctl_days_limited <- 
+  percentile_days_limited %>% 
   pivot_longer(cols = c(day_10, day_50, day_90), 
                names_to = "percentile", 
                values_to = "wd") %>% 
@@ -331,9 +372,37 @@ benchmark_trends92 <-
   theme_bw()
 
 benchmark_trends92
+
+benchmark_trends_limited <-
+  pctl_days_limited %>% 
+  ggplot(
+    # color points according to threshold (10, 50, 90%)
+    aes(x = wy, y = wd, color = percentile)
+  ) +
+  geom_point(size = 4) +
+  scale_color_fish(discrete = TRUE,
+                  option = "Oncorhynchus_tshawytscha",
+                  alpha = 0.6) +
+  geom_smooth(data = pctl_days_limited[4:147,],
+              alpha = 0.2,
+              # show linear trends
+              method = "lm",
+              se = TRUE) +
+  labs(title = "Chinook Salmon Outmigration Timing",
+       subtitle = "data from January-March only, 1977 not included",
+       x = "Water Year",
+       y = "Day of the Water Year",
+       color = "Percentile") +
+  theme_bw()
+
+benchmark_trends_limited
 ```
 
-I found that, over time (1978-2025), all three thresholds were reached earlier (benchmark_trends). To explore this relationship, I modeled the timing for each benchmark (10, 50 and 90% of each year's total outmigrants) as a function of the water year.
+I found that, over time (1978-2025), all three thresholds were reached earlier (benchmark_trends). To explore this relationship, I modeled the timing for each benchmark (10, 50 and 90% of each year's total outmigrants) as a function of the water year.\
+\
+However, prior to 1992, most years include data from January - March only and this clearly influenced the apparent trend, giving the appearance that these benchmarks were reached later earlier in the time series. The trend basically disappears if you look at data from 1992 on. I found this unsatisfying, so I repeated the analyses looking only at data from January - March, data that were reliably included throughout the time series.
+
+Note that for all of the Chinook Salmon Outmigration Timing plots, showing when the benchmarks were reach for each year, I've excluded the data from 1977 when plotting the linear approximations, offering a more conservative view of what seems to have been happening.
 
 ```{r}
 #| include: false
@@ -471,6 +540,102 @@ m2.day50.wy %>%
   summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
 
 m2.day90.wy %>%
+  spread_draws(b_wy) %>%
+  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
+```
+
+### Jan-Mar only
+
+```{r Jan-Mar}
+#| include: false
+
+percentile_days_limited
+
+# first including data from 1977
+# reaching the 10% benchmark
+m3.day10.wy <- 
+  brm(data = percentile_days_limited, # use the percentile_days_limited data
+      # use a gaussian (normal) distribution
+      family= gaussian,
+      # specify the model
+      day_10 ~ 1 + wy,
+      # specify parameters for executing the Markov chains
+      iter = 2000, warmup= 1000, chains= 4, cores=4,
+      # set seed so team gets the same results when running the model
+      seed = 42,
+      file = here("salmon/results/m3.day10.wy"))
+
+m3.day10.wy_robust <- 
+  brm(data = percentile_days_limited,
+      family = student,  # <--- Change from gaussian to student
+      day_10 ~ 1 + wy,
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 42,
+      file = here("salmon/results/m3.day10.wy_robust"))
+# doesn't LOOK all that much better!
+pp_check(m3.day10.wy_robust)
+
+# calculate LOO for the original Gaussian model
+m3.day10.wy <- add_criterion(m3.day10.wy, criterion = "loo")
+# warning about "Pareto values > 0.7" happens when one data point (like 1977) is so influential that the model changes drastically when it's removed
+
+# calculate LOO for the new "robust" (Student-t) model
+m3.day10.wy_robust <- add_criterion(m3.day10.wy_robust, criterion = "loo")
+
+# compare the two day10 models
+loo_compare(m3.day10.wy, m3.day10.wy_robust, criterion = "loo")
+
+# the performance difference between the models is very modest: 
+# the rule of thumb is: consider one model "clearly better" if the elpd_diff is more than twice the se_diff, but my difference is 2.5, and my error is 1.8, so both models are performing similarly
+
+m3.day10.wy_robust$criteria$loo
+m3.day10.wy$criteria$loo
+
+# the models are performing very similarly in terms of overall predictive power
+
+summary(m3.day10.wy_robust)
+plot(m3.day10.wy_robust)
+
+# reaching the 50% benchmark
+m3.day50.wy <- 
+  brm(data = percentile_days_limited, 
+      # Choose a gaussian (normal) distribution
+      family= gaussian,
+      day_50 ~ 1 + wy,
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 42,
+      file = here("salmon/results/m3.day50.wy"))
+
+# reaching the 90% benchmark
+m3.day90.wy <- 
+  brm(data = percentile_days_limited, 
+      family= gaussian,
+      day_90 ~ 1 + wy,
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 42,
+      file = here("salmon/results/m3.day90.wy"))
+```
+
+```{r}
+summary(m3.day10.wy)
+summary(m3.day50.wy)
+summary(m3.day90.wy)
+
+plot(m3.day10.wy)
+plot(m3.day50.wy)
+plot(m3.day90.wy)
+
+# calc the prob that the slope is less than 0
+
+m3.day10.wy %>%
+  spread_draws(b_wy) %>%
+  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
+
+m3.day50.wy %>%
+  spread_draws(b_wy) %>%
+  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
+
+m3.day90.wy %>%
   spread_draws(b_wy) %>%
   summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
 ```

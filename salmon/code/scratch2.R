@@ -63,3 +63,40 @@ df_regular <- df %>%
     fill = list(sampled = 0)
   )
 
+# test pivot wider action on beach seine data
+view(head(dat))
+df <- head(dat)
+df$organism_code <- c("CHN", "NOFISH", "CHN", "CHN", "BKS", "MQF")
+df[3:4,4] <- ymd("1976-12-21")
+df[3:4,6] <- 82
+df[,16] <- 1
+df[2,16] <- NA
+df[1,14] <- 118
+df[3,14] <- 107
+df[4,] <- df[3,]
+df[4,14] <- 88
+
+df[,c(1,4,10:16)]
+
+# df has 4 sample_ids from one station
+# 1 station has 'NOFISH' w 'NA' for count
+# 1 station has 2 CHN (1 count each, each with a different FL), therefore 2 rows
+# 1 station has 2 different fish spp, therefore 2 rows
+
+wide1 <-
+  df %>%
+  pivot_wider(
+    # relies on 'sample_id' to distinguish among sample units, but retains environmental data
+    id_cols = c(sample_id:time, water_temp),
+    # columns for all fish spp (only CHN needed for this analysis)
+    names_from = organism_code,
+    # log number of each speciesxfork_length for each seine (sample_id)
+    values_from = count,
+    # if no matches, enter '0'
+    values_fill = 0,
+    # sum counts if multiple matches
+    values_fn = sum)
+
+# code seems to work as intended:
+# yields a single row for each sample_id, CHN are summed, CHN is '0' when NOFISH is 'NA'
+

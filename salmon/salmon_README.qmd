@@ -4,7 +4,7 @@ format: pdf
 editor: visual
 ---
 
-This document is intended to orient you to process, data, code and analyses used in assessing Central Valley Chinook responses to 'first flush' events in the Sacramento River watershed. Details about the reasons for the effort as well as research objectives can be found elsewhere.
+This document is intended to orient you to the data, code and analyses used in assessing Central Valley Chinook responses to 'first flush' events in the Sacramento River watershed. Details about the reasons for the effort as well as research objectives can be found elsewhere.
 
 something about the GitHub repo...
 
@@ -31,6 +31,12 @@ something about the GitHub repo...
 `|--- results/ # output: results, tables, and exports`
 
 ### Data sources
+
+Beach seine and trawl data are from the Environmental Data Initiative:
+
+-   United States Fish and Wildlife Service, J. Speegle, C. Macfarlane, E. Huber, D. Goodman, K. Erly, and R. Cook. 2026. Interagency Ecological Program: Over four decades of juvenile fish monitoring data from the San Francisco Estuary, collected by the Delta Juvenile Fish Monitoring Program, 1976-2025 ver 14. Environmental Data Initiative. https://doi.org/10.6073/pasta/ad35c80cafd87ba928d3f37fa124ccaf (Accessed 2026-03-11).
+
+The site includes critical meta data on the naming of organisms and provides that latitude and longitude for all stations sampled. The site provides details on sampling procedures too.
 
 ### Installation & setup
 
