@@ -262,6 +262,8 @@ If there's a trend post-1992, it's hard to see in the accumulation curves, but, 
 
 ## benchmarks
 
+### 1977-2024
+
 To examine the year-to-year differences more closely, I set (arbitrary) 10%, 50% and 90% accumulation benchmarks ("day_10", "day_50", and "day_90") for the migration timing, and compared these values across years.
 
 ```{r}
@@ -442,6 +444,10 @@ m.day90.wy <-
 ```
 
 ```{r}
+m.day10.wy <- read_rds(here("salmon/results/m.day10.wy.rds"))
+m.day50.wy <- read_rds(here("salmon/results/m.day50.wy.rds"))
+m.day90.wy <- read_rds(here("salmon/results/m.day90.wy.rds"))
+
 summary(m.day10.wy)
 summary(m.day50.wy)
 summary(m.day90.wy)
@@ -470,9 +476,9 @@ m.day90.wy %>%
   summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
 ```
 
-### limited data
+### 1992+
 
-I ran those analyses again, limiting them to data from water year 1992 on.
+Few sites were sampled year-round prior to 1992, so I ran those analyses again, limiting them to data from water year 1992 on.
 
 ```{r}
 #| include: false
@@ -517,6 +523,10 @@ m2.day90.wy <-
 ```
 
 ```{r}
+m2.day10.wy <- read_rds(here("salmon/results/m2.day10.wy.rds"))
+m2.day50.wy <- read_rds(here("salmon/results/m2.day50.wy.rds"))
+m2.day90.wy <- read_rds(here("salmon/results/m2.day90.wy.rds"))
+
 summary(m2.day10.wy)
 summary(m2.day50.wy)
 summary(m2.day90.wy)
@@ -617,6 +627,10 @@ m3.day90.wy <-
 ```
 
 ```{r}
+m3.day10.wy <- read_rds(here("salmon/results/m3.day10.wy.rds"))
+m3.day50.wy <- read_rds(here("salmon/results/m3.day50.wy.rds"))
+m3.day90.wy <- read_rds(here("salmon/results/m3.day90.wy.rds"))
+
 summary(m3.day10.wy)
 summary(m3.day50.wy)
 summary(m3.day90.wy)
@@ -640,7 +654,9 @@ m3.day90.wy %>%
   summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
 ```
 
-I ran three separate Bayesian linear models to look at the timing of juvenile salmon outmigration, represented by the day of the water year when those three benchmarks had been reached over the course of the time series. Each model used a Gaussian distribution with water year as the predictor. Our 10% and 50% models' credible intervals provide strong evidence that the slopes are different from zero, however, the upper limit of the 90% model is at 0 exactly which gives less certainty to this slope's difference from zero and an overall weaker trend.
+I ran multiple Bayesian linear models to look at the timing of juvenile salmon outmigration, represented by the day of the water year when those three benchmarks had been reached over the course of the time series. Each model used a Gaussian distribution with water year as the predictor and the day of the water year when those benchmarks—10, 50 and 90% of the annual totals—are reached as the response variable. I used the data from three different time periods: The first included data from 1977-2024 and from all months of the year. The second was limited to 1992-2024 and all months of the year. And the third used all years (1977-2024), but only January-March. The sites were not sampled consistently across all years or all months, however, so there is the possibility that using the full range of years and times introduce bias, yet limiting the analyses to 1992-2024 reduces the range of potentially informative environmental factors. Limiting the data used to those from January through March (but all years) is probably the best compromise—the sites were sampled consistently during those months in all years. Early outmigrants entering the Delta in December or even earlier would be missed, but presumably the most important early numbers would be reasonably well represented.
+
+Regarding results from analysis of the January-March data only, the 10% and 50% models' credible intervals provide strong evidence that the slopes are different from zero, however, the posterior distribution for the 90% model overlaps 0 slightly.
 
 -   For the 10% accumulation model, there was an estimated slope of -0.69 days per year (probability the slope is \<0 = 0.999)
 
@@ -667,14 +683,14 @@ pctl_days_wyt <-
   wy_type %>% 
   # select Sac watershed, excludes SJR watershed
   filter(watershed == "Sacramento Valley") %>% 
-  # merge w simple df, no 1977 w problem data 
-  right_join(pctl_days_red,
+  # merge w simple df, includes 1977 data 
+  right_join(pctl_days,
              by = "wy") %>% 
   dplyr::select(-watershed) %>% 
   # specify order of the wyt levels
   mutate(wyt = fct_relevel(wyt, "W", "AN", "BN", "D", "C"),
          # center wy to facilitate model convergence
-         wy_centered = wy - 1978) %>% 
+         wy_centered = wy - 1977) %>% 
   relocate(wy_centered, .after = wy)
 
 write_rds(pctl_days_wyt, 
@@ -686,7 +702,7 @@ pctl_days_wyt %>%
          wy <= 2024) %>% 
   ggplot(aes(x = wyt, y = wd, group = wyt)) +
   geom_boxplot() +
-  labs(title = "Timing of 10% Annual Accumulation Threshold",
+  labs(title = "Timing of 10% Annual Accumulation Benchmark",
        x = "Water Year Type",
        y = "Day of the Water Year") +
   theme_bw()
