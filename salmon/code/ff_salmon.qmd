@@ -3,19 +3,16 @@ title: "FirstFlush_Salmon"
 author: "Pete Nelson"
 format: pdf
 editor: visual
-editor_options: 
-  chunk_output_type: console
-bibliography: references.bib
 ---
 
 ## packages
 
 One package **not** available on CRAN: If necessary, `remotes::install_github("doi-usgs/EflowStats@v5.2.0")`.
 
-```{r load_packages, include=FALSE}
+```{r}
 
-library(here)
 library(tidyverse)
+library(here)
 library(readxl)
 library(janitor) 
 library(ggplot2)
@@ -29,11 +26,17 @@ library(fishualize)
 library(tidybayes)
 ```
 
-## beach seine data
+## seine data
+
+Load partially cleaned DJFMP beach seine data from local drive.
 
 Note: Look at this data set too eventually. *United States Fish and Wildlife Service, J. Kirsch, M. Marshall, C. Johnston, A. Arrambide, and J. Speegle. 2025. Interagency Ecological Program and US Fish and Wildlife Service: Beach Seine Efficiency Study, collected by the Delta Juvenile Fish Monitoring Program, 2013-2018 ver 2. Environmental Data Initiative.* https://doi.org/10.6073/pasta/818b8bf1d93b81cc7c5124f9df81ce01 (Accessed 2026-03-11).
 
 ```{r load_data, eval=FALSE}
+
+#| echo(true)
+#| message(false)
+
 # beach seine data
 raw <- 
   read_rds(here("salmon/data/raw/raw.rds"))
@@ -76,7 +79,29 @@ dat <-
   raw %>% 
   filter(station %in% good$station,
          # limit to data collected during complete water years
-         date >= "1976-10-01")
+         date >= "1976-10-01") %>% 
+  mutate(year = year(date),
+         month = month(date)) %>% 
+  relocate(region, .after = id_code) %>% 
+  relocate(year:month, .before = date)
+
+reg_labs <-
+  tibble(region = factor(1:6),
+         region_label = c("Lower Sac R", "N Delta", "Cen Delta", "S Delta",
+                          "Lower SJR", "SF & SP Bays"))
+
+# create monthly coverage indicator and retain region_code
+coverage <- dat %>%
+  distinct(station, year, month, region) %>%
+  # 'tag' months sampled
+  mutate(sampled = 1)
+
+# create tibble of station_code and region_code for later use
+sta_reg <-
+  coverage %>%
+  distinct(station, region) %>% 
+  left_join(reg_labs, by = "region")
+
 ```
 
 ## data reduction+
@@ -197,6 +222,8 @@ daily_cum_limited <-
 Plot annual accumulation rates for juvenile Chinook as they enter the Delta
 
 ```{r}
+
+#| output (false)
 # changed the colors where the older years are lighter and newer years are darker to see the phenological shifts in timing 
 accumulation_curves <-
   ggplot(daily_cum,
@@ -237,6 +264,13 @@ accumulation_curves92 <-
 
 accumulation_curves92
 
+
+```
+
+```{r}
+
+#| eval (true)
+
 # limit the data to January - March
 accumulation_curves_limited <-
   ggplot(daily_cum_limited,
@@ -245,20 +279,27 @@ accumulation_curves_limited <-
            group = wy,
            color = wy)) +         
   geom_line() +
+  # Add the specific year on top in red
+  geom_line(data = subset(daily_cum_limited, wy == 1977), 
+            color = "red", 
+            linewidth = 0.7) + 
   geom_hline(yintercept = c(10, 50, 90),
              linetype = "dashed") +
   scale_color_viridis_c(option = "mako", direction = -1) +
+  annotate("text", x = 200, y = 27,
+           label = "1977", color = "red", fontface = "bold") +
   labs(x = "Day of Water Year",
        y = "Cumulative % of Total",
        title = "Juvenile Chinook Accumulation Curves",
-       subtitle = "January - March only",
+       subtitle = "January - March only (1977 Highlighted)",
        color = "water year") +
   theme_bw()
+
 
 accumulation_curves_limited
 ```
 
-If there's a trend post-1992, it's hard to see in the accumulation curves, but, when you look at the curves generated from January-March only, it looks pretty similar to the raw data from all years and months. What to do about the data from 1977, the second driest year in California history (1924 had lower recorded precipitation) and the year with the lowest state-wide runoff?
+If there's a trend post-1992, it's hard to see in the accumulation curves (not shown), but, when you look at the curves generated from January-March only, it looks pretty similar to the raw data from all years and months. What to do about the data from 1977, the second driest year in California history (1924 had lower recorded precipitation) and the year with the lowest state-wide runoff?
 
 ## benchmarks
 
@@ -267,7 +308,6 @@ If there's a trend post-1992, it's hard to see in the accumulation curves, but, 
 To examine the year-to-year differences more closely, I set (arbitrary) 10%, 50% and 90% accumulation benchmarks ("day_10", "day_50", and "day_90") for the migration timing, and compared these values across years.
 
 ```{r}
-#| fig-cap: "Day of the Water Year for each Benchmark (10, 50, 90%)"
 
 ## ID benchmarks ----
 # day of water year when the 10%, 50% and 90% of total annual numbers are reached
@@ -306,22 +346,46 @@ pctl_days <-
                values_to = "wd") %>% 
   mutate(percentile = factor(percentile))
 
-# same as above, but with Jan-Mar data only
-pctl_days_limited <- 
-  percentile_days_limited %>% 
-  pivot_longer(cols = c(day_10, day_50, day_90), 
-               names_to = "percentile", 
-               values_to = "wd") %>% 
-  mutate(percentile = factor(percentile))
 
-# same data without 1997
-pctl_days_red <-
-  pctl_days %>% 
-  filter(wy != "1977")
+```
 
-pctl_days_92 <-
-  pctl_days %>% 
-  filter(wy >= 1992)
+### water year type
+
+```{r}
+#| fig-cap: "Day of the Water Year for each Benchmark (10, 50, 90%)"
+
+## year type ----
+# first, add water year type to the percentile_days df
+wy_type <- 
+  read_excel(here("salmon/data/raw/cdec-water-year-type-jun-2025.xlsx")) %>% 
+  mutate(wy = WY,
+         wyt = factor(WYT),
+         watershed = factor(Area),
+         .keep = "unused")
+
+pctl_days_wyt <-
+  wy_type %>% 
+  # select Sac watershed, excludes SJR watershed
+  filter(watershed == "Sacramento Valley") %>% 
+  # merge w simple df, includes 1977 data 
+  right_join(pctl_days,
+             by = "wy") %>% 
+  dplyr::select(-watershed) %>% 
+  # specify order of the wyt levels
+  mutate(wyt = fct_relevel(wyt, "W", "AN", "BN", "D", "C"),
+         # center wy to facilitate model convergence
+         wy_centered = wy - 1977) %>% 
+  relocate(wy_centered, .after = wy)
+
+# make 'wyt' an ordered factor
+pctl_days_wyt <- pctl_days_wyt %>%
+  mutate(wyt = factor(wyt, levels = c("C", "D", "BN", "AN", "W"), 
+                      # must be low to high, where C<D<BN<AN<W
+                      ordered = TRUE))
+
+write_rds(pctl_days_wyt, 
+          here("salmon/data/processed/pctl_days_wyt.rds"))
+
 
 # figure shows the day of the water year for each benchmark (10, 50, 90%) for each year
 
@@ -348,6 +412,12 @@ benchmark_trends <-
   theme_bw()
 
 benchmark_trends
+
+```
+
+```{r}
+
+#| output (false)
 
 # benchmark trends using data from 1992+
 benchmark_trends92 <-
@@ -421,7 +491,8 @@ m.day10.wy <-
       # setting the "seed" determines which randomnumbers will get sampled
       # so that team gets the same results when running the model
       seed = 42,
-      file = here("salmon/results/m.day10.wy"))
+      file = here("salmon/results/m.day10.wy"),
+      file_refit = "on_change")
 
 # reaching the 50% benchmark
 m.day50.wy <- 
@@ -431,7 +502,8 @@ m.day50.wy <-
       day_50 ~ 1 + wy,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
       seed = 42,
-      file = here("salmon/results/m.day50.wy"))
+      file = here("salmon/results/m.day50.wy"),
+      file_refit = "on_change")
 
 # reaching the 90% benchmark
 m.day90.wy <- 
@@ -440,10 +512,14 @@ m.day90.wy <-
       day_90 ~ 1 + wy,
       iter = 2000, warmup = 1000, chains = 4, cores =4,
       seed = 42,
-      file = here("salmon/results/m.day90.wy"))
+      file = here("salmon/results/m.day90.wy"),
+      file_refit = "on_change")
 ```
 
 ```{r}
+#| include: false
+
+
 m.day10.wy <- read_rds(here("salmon/results/m.day10.wy.rds"))
 m.day50.wy <- read_rds(here("salmon/results/m.day50.wy.rds"))
 m.day90.wy <- read_rds(here("salmon/results/m.day90.wy.rds"))
@@ -451,15 +527,15 @@ m.day90.wy <- read_rds(here("salmon/results/m.day90.wy.rds"))
 summary(m.day10.wy)
 summary(m.day50.wy)
 summary(m.day90.wy)
-```
-
-```{r}
-#| include: false
 
 # run the model plots for m.d_10.wy, m.d_50.wy, m.d_90.wy
 plot(m.day10.wy)
 plot(m.day50.wy)
 plot(m.day90.wy) # less certain than the others
+```
+
+```{r}
+
 
 # calc the prob that the slope is less than 0
 m.day10.wy %>%
@@ -478,7 +554,7 @@ m.day90.wy %>%
 
 ### 1992+
 
-Few sites were sampled year-round prior to 1992, so I ran those analyses again, limiting them to data from water year 1992 on.
+Few sites were sampled year-round prior to 1992, so I ran those analyses again, limiting them to data from water year 1992 on. Output not included, but may be worth re-considering at some point.
 
 ```{r}
 #| include: false
@@ -499,7 +575,8 @@ m2.day10.wy <-
       # setting the "seed" determines which randomnumbers will get sampled
       # so that team gets the same results when running the model
       seed = 42,
-      file = here("salmon/results/m2.day10.wy"))
+      file = here("salmon/results/m2.day10.wy"),
+      file_refit = "on_change")
 
 # reaching the 50% benchmark
 m2.day50.wy <- 
@@ -509,7 +586,8 @@ m2.day50.wy <-
       day_50 ~ 1 + wy,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
       seed = 42,
-      file = here("salmon/results/m2.day50.wy"))
+      file = here("salmon/results/m2.day50.wy"),
+      file_refit = "on_change")
 
 # reaching the 90% benchmark
 m2.day90.wy <- 
@@ -518,11 +596,15 @@ m2.day90.wy <-
       day_90 ~ 1 + wy,
       iter = 2000, warmup = 1000, chains = 4, cores =4,
       seed = 42,
-      file = here("salmon/results/m2.day90.wy"))
+      file = here("salmon/results/m2.day90.wy"),
+      file_refit = "on_change")
 
 ```
 
 ```{r}
+#| include: false
+
+
 m2.day10.wy <- read_rds(here("salmon/results/m2.day10.wy.rds"))
 m2.day50.wy <- read_rds(here("salmon/results/m2.day50.wy.rds"))
 m2.day90.wy <- read_rds(here("salmon/results/m2.day90.wy.rds"))
@@ -533,12 +615,16 @@ summary(m2.day90.wy)
 ```
 
 ```{r}
+#| include: false
 plot(m2.day10.wy)
 plot(m2.day50.wy)
 plot(m2.day90.wy)
 ```
 
 ```{r}
+#| include: false
+
+
 # model results aren't encouraging, but let's calc the prob that the slope is less than 0 just for fun
 
 m2.day10.wy %>%
@@ -557,7 +643,6 @@ m2.day90.wy %>%
 ### Jan-Mar only
 
 ```{r Jan-Mar}
-#| include: false
 
 percentile_days_limited
 
@@ -573,19 +658,23 @@ m3.day10.wy <-
       iter = 2000, warmup= 1000, chains= 4, cores=4,
       # set seed so team gets the same results when running the model
       seed = 42,
-      file = here("salmon/results/m3.day10.wy"))
+      file = here("salmon/results/m3.day10.wy"),
+      file_refit = "on_change")
 
 m3.day10.wy_robust <- 
   brm(data = percentile_days_limited,
       family = student,  # <--- Change from gaussian to student
       day_10 ~ 1 + wy,
+      # apply loo_moment_match on problematic observations bc crazy 1977 outlier
+      save_pars = save_pars(all = TRUE),
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
       seed = 42,
-      file = here("salmon/results/m3.day10.wy_robust"))
+      file = here("salmon/results/m3.day10.wy_robust"),
+      file_refit = "on_change")
 # doesn't LOOK all that much better!
 pp_check(m3.day10.wy_robust)
 
-# calculate LOO for the original Gaussian model
+# calculate LOO for the original Jan-Mar Gaussian model
 m3.day10.wy <- add_criterion(m3.day10.wy, criterion = "loo")
 # warning about "Pareto values > 0.7" happens when one data point (like 1977) is so influential that the model changes drastically when it's removed
 
@@ -595,16 +684,30 @@ m3.day10.wy_robust <- add_criterion(m3.day10.wy_robust, criterion = "loo")
 # compare the two day10 models
 loo_compare(m3.day10.wy, m3.day10.wy_robust, criterion = "loo")
 
+# notes:
 # the performance difference between the models is very modest: 
 # the rule of thumb is: consider one model "clearly better" if the elpd_diff is more than twice the se_diff, but my difference is 2.5, and my error is 1.8, so both models are performing similarly
 
 m3.day10.wy_robust$criteria$loo
 m3.day10.wy$criteria$loo
 
-# the models are performing very similarly in terms of overall predictive power
+# the robust model (using Student-t distribution) seems to perform slightly better, but the 
+# improvement could plausibly be attributed to noise
+
+# let's plot the k values for each model
+plot(m3.day10.wy$criteria$loo)
+plot(m3.day10.wy_robust$criteria$loo)
+# PSIS diagnostic plots confirm that both models are pretty good, but also show how nicely
+# the 'robust' model handles the extreme datum from 1977
 
 summary(m3.day10.wy_robust)
 plot(m3.day10.wy_robust)
+
+```
+
+```{r}
+#| include: false
+
 
 # reaching the 50% benchmark
 m3.day50.wy <- 
@@ -614,7 +717,8 @@ m3.day50.wy <-
       day_50 ~ 1 + wy,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
       seed = 42,
-      file = here("salmon/results/m3.day50.wy"))
+      file = here("salmon/results/m3.day50.wy"),
+      file_refit = "on_change")
 
 # reaching the 90% benchmark
 m3.day90.wy <- 
@@ -623,10 +727,14 @@ m3.day90.wy <-
       day_90 ~ 1 + wy,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
       seed = 42,
-      file = here("salmon/results/m3.day90.wy"))
+      file = here("salmon/results/m3.day90.wy"),
+      file_refit = "on_change")
 ```
 
 ```{r}
+
+#| include (false)
+
 m3.day10.wy <- read_rds(here("salmon/results/m3.day10.wy.rds"))
 m3.day50.wy <- read_rds(here("salmon/results/m3.day50.wy.rds"))
 m3.day90.wy <- read_rds(here("salmon/results/m3.day90.wy.rds"))
@@ -656,7 +764,7 @@ m3.day90.wy %>%
 
 I ran multiple Bayesian linear models to look at the timing of juvenile salmon outmigration, represented by the day of the water year when those three benchmarks had been reached over the course of the time series. Each model used a Gaussian distribution with water year as the predictor and the day of the water year when those benchmarks—10, 50 and 90% of the annual totals—are reached as the response variable. I used the data from three different time periods: The first included data from 1977-2024 and from all months of the year. The second was limited to 1992-2024 and all months of the year. And the third used all years (1977-2024), but only January-March. The sites were not sampled consistently across all years or all months, however, so there is the possibility that using the full range of years and times introduce bias, yet limiting the analyses to 1992-2024 reduces the range of potentially informative environmental factors. Limiting the data used to those from January through March (but all years) is probably the best compromise—the sites were sampled consistently during those months in all years. Early outmigrants entering the Delta in December or even earlier would be missed, but presumably the most important early numbers would be reasonably well represented.
 
-Regarding results from analysis of the January-March data only, the 10% and 50% models' credible intervals provide strong evidence that the slopes are different from zero, however, the posterior distribution for the 90% model overlaps 0 slightly.
+Regarding results from analysis of the January-March data only, the 10% and 50% models' credible intervals provide strong evidence that the slopes are different from zero, however, the posterior distribution for the 90% model overlaps 0 slightly (95% CIs: -0.73, 0.05).
 
 -   For the 10% accumulation model, there was an estimated slope of -0.69 days per year (probability the slope is \<0 = 0.999)
 
@@ -678,7 +786,6 @@ wy_type <-
          watershed = factor(Area),
          .keep = "unused")
 
-# note that I'm using the df withOUT 1977
 pctl_days_wyt <-
   wy_type %>% 
   # select Sac watershed, excludes SJR watershed
@@ -693,12 +800,19 @@ pctl_days_wyt <-
          wy_centered = wy - 1977) %>% 
   relocate(wy_centered, .after = wy)
 
+# make 'wyt' an ordered factor
+pctl_days_wyt <- pctl_days_wyt %>%
+  mutate(wyt = factor(wyt, levels = c("C", "D", "BN", "AN", "W"), 
+                      # must be low to high, where C<D<BN<AN<W
+                      ordered = TRUE))
+
 write_rds(pctl_days_wyt, 
           here("salmon/data/processed/pctl_days_wyt.rds"))
 
 ### wy boxplot -----
 pctl_days_wyt %>% 
   filter(percentile == "day_10",
+         # no data yet re wyt for 2025
          wy <= 2024) %>% 
   ggplot(aes(x = wyt, y = wd, group = wyt)) +
   geom_boxplot() +
@@ -708,30 +822,69 @@ pctl_days_wyt %>%
   theme_bw()
 
 ### m1 ----
-# run wy + wyt model with the centered variable, 1977 & 2025 not included
+# run wy + wyt model with the centered variable, where wyt is ordered & monotonic
+# 2025 not included
 m1.day10.wy.wyt <- 
   brm(data = pctl_days_wyt %>% 
         filter(wy <= 2024),
       family = gaussian,
-      wd ~ 0 + wy_centered + wyt, 
+      wd ~ 0 + wy_centered + mo(wyt), 
       iter = 10000, warmup = 1000, chains = 4, cores = 4, 
       seed = 42,
       # save fitted model (this one w the wy centered)
-      file = here("salmon/results/m2.day10.wy.wyt")
+      file = here("salmon/results/m1.day10.wy.wyt"),
+      file_refit = "on_change"
   )
 
-summary(m1.day10.wy.wyt) 
+summary(m1.day10.wy.wyt)
 plot(m1.day10.wy.wyt)
 # Rhat is perfect
-# water year effect looks solid (albeit kinda tight on 0)
+# water year (centered) effect looks solid 
 # posterior distributions look great (uniform)
 # mcmc look great too
-# estimates for year type are wonky--reflect the data! 
+# estimates for year type are wonky--reflects the data! 
+# strong effect of 'year type' as a monotonic, ordered factor. cool!
 # is there an interaction effect?
-# should also include some semi-informed priors
+# should also include some semi-informed priors?
+
+# compute estimated effect for each wyt level
+# get predicted effect of each wyt level, holding wy_centered at 0
+ce <- conditional_effects(m1.day10.wy.wyt, effects = "wyt", re_formula = NA)
+
+# extract the estimate for each level, plus 95% CIs
+wyt_effects <- ce$wyt[, c("wyt", "estimate__", "lower__", "upper__")]
+
+# round for readability
+wyt_effects$estimate <- round(wyt_effects$estimate__, 2)
+
+wyt_effects %>% 
+  dplyr::select(-estimate__) %>% 
+  mutate("l-95% CI" = lower__,
+         "u-95% CI" = upper__,
+         .keep = "unused")
+
+# note that these are scaled effects and can't be translated directly into days of the water year! here's an attempt to translate monotonic effects into predicted timing
+# Define levels of water year type
+levels_wyt <- c("C", "D", "BN", "AN", "W")
+
+# Predicted wd at reference wy_centered = 0
+preds <- fitted(m1.day10.wy.wyt, newdata = data.frame(
+  wyt = levels_wyt,
+  wy_centered = 0
+))
+
+# Assemble into a table
+predicted_wd <- data.frame(
+  wyt = levels_wyt,
+  estimate = round(preds[, "Estimate"], 1),
+  l_95 = round(preds[, "Q2.5"], 1),
+  u_95 = round(preds[, "Q97.5"], 1)
+)
+
+predicted_wd
 
 ### m2 ----
-# run wy * wyt model with the centered variable, 1977 not included
+# run wy * wyt model with the centered variable, 2025 not included
 m2.day10.wy.wyt <- 
   brm(data = pctl_days_wyt %>% 
         filter(wy <= 2024),
@@ -740,21 +893,69 @@ m2.day10.wy.wyt <-
       iter = 10000, warmup = 1000, chains = 4, cores = 4, 
       seed = 42,
       # save fitted model (this one w the wy centered)
-      file = here("salmon/results/m3.day10.wy.wyt")
+      file = here("salmon/results/m2.day10.wy.wyt"),
+      file_refit = "on_change"
   )
 
 summary(m2.day10.wy.wyt)
 plot(m2.day10.wy.wyt)
+
+### m3 ----
+# run wy * wyt model with the centered variable, 2025 not included, replace Gaussian w Students-t distribution
+m3.day10.wy.wyt <- 
+  brm(data = pctl_days_wyt %>% 
+        filter(wy <= 2024),
+      family = student,
+      wd ~ 0 + wy_centered * wyt, 
+      iter = 10000, warmup = 1000, chains = 4, cores = 4, 
+      seed = 42,
+      # save fitted model (this one w the wy centered)
+      file = here("salmon/results/m3.day10.wy.wyt"),
+      file_refit = "on_change"
+  )
+
+# to be consistent, I should prob designate this model as 'robust', but can't be bothered
+summary(m3.day10.wy.wyt)
+plot(m3.day10.wy.wyt)
 ```
 
-These results are not so solid: All four of the interaction terms span 0.
+These results are not so solid: Credible intervals for all four of the interaction terms span 0.
 
 Posterior predictive check...see if the model's "noise" (sigma) matches the actual spread of your data. These look good for both models.
 
 ```{r}
-# posterior predictive check
+# posterior predictive check (see density overlay figures)
 pp_check(m1.day10.wy.wyt)
 pp_check(m2.day10.wy.wyt)
+pp_check(m3.day10.wy.wyt)
 ```
 
 Because the model simulations (blue lines) approximate the actual data fairly well (they aren't wider or narrower), this sigma seems to be a good estimation of the error.
+
+Let's compare these models with the leave-one-out approach:
+
+```{r}
+# calculate LOO for the original water_year + water_year_type Gaussian model
+m1.day10.wy.wyt <- add_criterion(m1.day10.wy.wyt, criterion = "loo")
+
+# calculate LOO for the water_year * water_year_type Gaussian model
+m2.day10.wy.wyt <- add_criterion(m2.day10.wy.wyt, criterion = "loo")
+
+# calculate LOO for the water_year * water_year_type Student-t "robust" model
+m3.day10.wy.wyt <- add_criterion(m3.day10.wy.wyt, criterion = "loo")
+
+# compare the three day10 wyt models with interaction terms
+loo_compare(m1.day10.wy.wyt, m2.day10.wy.wyt, m3.day10.wy.wyt, criterion = "loo")
+
+# no real difference in model performance among the 3...
+
+m1.day10.wy.wyt$criteria$loo
+m2.day10.wy.wyt$criteria$loo
+m3.day10.wy.wyt$criteria$loo
+
+# let's plot the k values for each model (cause I like these figures)
+plot(m1.day10.wy.wyt$criteria$loo)
+plot(m2.day10.wy.wyt$criteria$loo)
+plot(m3.day10.wy.wyt$criteria$loo)
+# everything well below 0.7...
+```

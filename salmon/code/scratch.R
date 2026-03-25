@@ -106,7 +106,7 @@ good <- c("AM001S", "DS002S", "GS010E", "LP003E", "MK004W", "MR010W", "MS001N",
 
 # filter to retain only 'good' sites (station_code)
 coverage_good <-
-  coverage_full %>%
+  coverage2_full %>%
   filter(station_code %in% good)
 
 # associate each site (station_code) with the appropriate region
@@ -123,7 +123,7 @@ coverage_good <- coverage_good %>%
 
 ### good heatmaps ----
 sampling_effort_g <-
-  ggplot(coverage2_good,
+  ggplot(coverage_good,
        aes(month_label, year,
                            # Only fill if sampled is 1, otherwise set to NA
                            fill = ifelse(sampled == 1, as.character(region_code), NA))) +
