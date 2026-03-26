@@ -3,6 +3,7 @@ project:
   output-dir: docs
   render:
     - index.qmd
+    - code/analysis/cont_wq_analysis_plan.qmd
     - code/analysis/cont_wq_maps.qmd
     - code/analysis/sac_fpt_ssc_turbidity.qmd
 
@@ -20,4 +21,3 @@ format:
     theme: cosmo
     css: styles.css
     toc: true
-
