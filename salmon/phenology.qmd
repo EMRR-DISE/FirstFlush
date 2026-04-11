@@ -28,6 +28,8 @@ library(fishualize)
 library(tidybayes)
 ```
 
+# load data
+
 ```{r}
 #| label: seine-data
 #| echo: true
@@ -57,6 +59,10 @@ fish_codes <-
     distinct(IEPFishCode)
 
 ```
+
+# wrangel data
+
+## choose sites
 
 ```{r}
 #| label: limit-sites
@@ -93,7 +99,12 @@ sta_reg <-
   coverage %>%
   distinct(station, region) %>% 
   left_join(reg_labs, by = "region")
+
 ```
+
+## water year types
+
+Add data on *water year types* to data frame.
 
 ```{r}
 #| label: wy-wyd
@@ -121,6 +132,12 @@ dat <-
   relocate(sample_id)
 
 ```
+
+# analysis
+
+## daily salmon counts
+
+Calculate the accumulated number of salmon over the course of each water year and aggregate over all beach seine sites. Determine a cumulative percentage for each day over the entire year and for the 3-month period January, February, and March. Plot annual accumulation curves to show the pattern of juvenile outmigration for each water year, as well as for each Jan-Mar period for each year.
 
 ```{r}
 #| label: counts
@@ -269,6 +286,10 @@ ggplot(daily_cum_limited,
 ggsave(here("salmon/plots/accum_jan2mar.png"))
 ```
 
+## benchmarks
+
+Determine the day of each water year when 10%, 50% and 90% of the total annual numbers are reached.
+
 ```{r}
 #| label: benchmarks
 
@@ -318,6 +339,10 @@ pctl_days_limited <-
 
 ```
 
+## water year type
+
+Add the water year type data to the percentile data for analysis and graphics.
+
 ```{r}
 #| label: wy-type
 
@@ -355,7 +380,9 @@ write_rds(pctl_days_wyt,
 
 ```
 
-# year effect
+## migration timing
+
+Plot the water year days when each benchmark (10, 50, or 90%) is reach for each water year.
 
 ```{r}
 #| label: wy-effect
@@ -388,7 +415,11 @@ benchmark_trends_limited
 
 ```
 
-Start testing for a water *year* effect. Some trial code here; not all should be retained.
+## models
+
+### year effect
+
+Testing for a water *year* effect, focusing first on the *day10* benchmark, when 10% of each annual total has been reached.
 
 ```{r}
 #| label: m3-day10
@@ -409,7 +440,11 @@ m3.day10.wy <-
       seed = 42,
       file = here("salmon/results/m3.day10.wy"),
       file_refit = "on_change")
+
+# run posterior predictive check
 pp_check(m3.day10.wy)
+
+write_rds(m3.day10.wy, here("salmon/results/m3.day10.wy.rds"))
 
 m3.day10.wy_robust <- 
   brm(data = percentile_days_limited,
@@ -447,8 +482,8 @@ m3.day10.wy$criteria$loo
 # let's plot the k values for each model
 plot(m3.day10.wy$criteria$loo)
 plot(m3.day10.wy_robust$criteria$loo)
-# PSIS diagnostic plots confirm that both models are pretty good, but also show how nicely
-# the 'robust' model handles the extreme datum from 1977
+# PSIS diagnostic plots confirm that both models are pretty good, but also 
+# show how nicely the 'robust' model handles the extreme datum from 1977
 
 summary(m3.day10.wy_robust)
 plot(m3.day10.wy_robust)
@@ -458,7 +493,9 @@ m3.day10.wy_robust %>%
   summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
 ```
 
-The code below models comparable relationships to the previous code, but uses the 50% and 90% benchmarks. It needs to be reviewed for accuracy though.
+The "robust" model for the *day10* benchmark provides strong support for the hypothesis that migration, particularly the earlier phase of the process, has shifted earlier in the water year by approximately 0.35 days each year from 1997-2024.
+
+The code below models comparable relationships to the previous code, but uses the *day50* and *day90* benchmarks. This code needs to be reviewed for accuracy though.
 
 ```{r}
 #| label: m3-day50+
@@ -486,15 +523,9 @@ m3.day90.wy <-
       file = here("salmon/results/m3.day90.wy"),
       file_refit = "on_change")
 
-m3.day10.wy <- read_rds(here("salmon/results/m3.day10.wy.rds"))
-m3.day50.wy <- read_rds(here("salmon/results/m3.day50.wy.rds"))
-m3.day90.wy <- read_rds(here("salmon/results/m3.day90.wy.rds"))
-
-summary(m3.day10.wy)
 summary(m3.day50.wy)
 summary(m3.day90.wy)
 
-plot(m3.day10.wy)
 plot(m3.day50.wy)
 plot(m3.day90.wy)
 
@@ -524,7 +555,7 @@ These results present strong evidence for a *year* effect (i.e., model slopes we
 
 -For the 90% accumulation model (*day90*), there was an estimated slope of -0.33 days per year and the probability that the slope is less than 0 equals 0.955.
 
-# water year type
+### water year type effect
 
 I also attempted to determine if there was an effect of water year *type* on the timing of Chinook outmigration. I tested several models that included both *water year* and *wyt* (water year type) as explanatory variables.
 
@@ -699,181 +730,5 @@ plot(m1.day10.wy.wyt$criteria$loo)
 plot(m2.day10.wy.wyt$criteria$loo)
 plot(m3.day10.wy.wyt$criteria$loo)
 # everything well below 0.7...
-
-```
-
-# scratch
-
-The code below is retained in case it's useful later, but the approaches are problematic. First, there was the initial attempt to use all years and all months. This proved unsatisfactory because, prior to 1992, seines were completed sporadically between April and December. Because monthly coverage improved in 1992, I also tried to limit the time series to the years from 1992 onward, retaining data for all months of the year. This second approach may be worth a second look; arguably, it's more honest than the approach used above where I used data from all years but only for the months of January, February and April.
-
-```{r}
-#| label: m1-all-yrs
-#| include: false
-
-# using all years and all months
-
-# reaching the 10% benchmark
-m.day10.wy <- 
-  brm(data = percentile_days, # use the percentile_days data
-      # use a gaussian (normal) distribution
-      family= gaussian,
-      # specify the model
-      day_10 ~ 1 + wy,
-      # specify parameters for executing the Markov chains
-      iter = 2000, warmup= 1000, chains= 4, cores=4,
-      # setting the "seed" determines which randomnumbers will get sampled
-      # so that team gets the same results when running the model
-      seed = 42,
-      file = here("salmon/results/m.day10.wy"),
-      file_refit = "on_change")
-
-# reaching the 50% benchmark
-m.day50.wy <- 
-  brm(data = percentile_days, 
-      # Choose a gaussian (normal) distribution
-      family= gaussian,
-      day_50 ~ 1 + wy,
-      iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42,
-      file = here("salmon/results/m.day50.wy"),
-      file_refit = "on_change")
-
-# reaching the 90% benchmark
-m.day90.wy <- 
-  brm(data = percentile_days, 
-      family= gaussian,
-      day_90 ~ 1 + wy,
-      iter = 2000, warmup = 1000, chains = 4, cores =4,
-      seed = 42,
-      file = here("salmon/results/m.day90.wy"),
-      file_refit = "on_change")
-
-m.day10.wy <- read_rds(here("salmon/results/m.day10.wy.rds"))
-m.day50.wy <- read_rds(here("salmon/results/m.day50.wy.rds"))
-m.day90.wy <- read_rds(here("salmon/results/m.day90.wy.rds"))
-
-summary(m.day10.wy)
-summary(m.day50.wy)
-summary(m.day90.wy)
-
-# run the model plots for m.d_10.wy, m.d_50.wy, m.d_90.wy
-plot(m.day10.wy)
-plot(m.day50.wy)
-plot(m.day90.wy) # less certain than the others
-
-# calc the prob that the slope is less than 0
-m.day10.wy %>%
-  spread_draws(b_wy) %>%
-  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
-# virtually certain!
-
-m.day50.wy %>%
-  spread_draws(b_wy) %>%
-  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
-
-m.day90.wy %>%
-  spread_draws(b_wy) %>%
-  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
-```
-
-Because seine samples were particularly inconsistent Apr-Dec prior to 1992, I tried working with wy\>=1992.
-
-```{r}
-#| label: m2-92+
-#| include: false
-
-percentile_days92 <-
-  percentile_days %>% 
-  filter(wy >= 1992)
-
-# reaching the 10% benchmark
-m2.day10.wy <- 
-  brm(data = percentile_days92, # use the percentile_days92 data
-      # use a gaussian (normal) distribution
-      family= gaussian,
-      # specify the model
-      day_10 ~ 1 + wy,
-      # specify parameters for executing the Markov chains
-      iter = 2000, warmup= 1000, chains= 4, cores=4,
-      # setting the "seed" determines which randomnumbers will get sampled
-      # so that team gets the same results when running the model
-      seed = 42,
-      file = here("salmon/results/m2.day10.wy"),
-      file_refit = "on_change")
-
-# reaching the 50% benchmark
-m2.day50.wy <- 
-  brm(data = percentile_days92, 
-      # Choose a gaussian (normal) distribution
-      family= gaussian,
-      day_50 ~ 1 + wy,
-      iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42,
-      file = here("salmon/results/m2.day50.wy"),
-      file_refit = "on_change")
-
-# reaching the 90% benchmark
-m2.day90.wy <- 
-  brm(data = percentile_days92, 
-      family= gaussian,
-      day_90 ~ 1 + wy,
-      iter = 2000, warmup = 1000, chains = 4, cores =4,
-      seed = 42,
-      file = here("salmon/results/m2.day90.wy"),
-      file_refit = "on_change")
-
-m2.day10.wy <- read_rds(here("salmon/results/m2.day10.wy.rds"))
-m2.day50.wy <- read_rds(here("salmon/results/m2.day50.wy.rds"))
-m2.day90.wy <- read_rds(here("salmon/results/m2.day90.wy.rds"))
-
-summary(m2.day10.wy)
-summary(m2.day50.wy)
-summary(m2.day90.wy)
-
-plot(m2.day10.wy)
-plot(m2.day50.wy)
-plot(m2.day90.wy)
-
-# model results aren't encouraging, but let's calc the prob that the slope is less than 0 just for fun
-
-m2.day10.wy %>%
-  spread_draws(b_wy) %>%
-  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
-
-m2.day50.wy %>%
-  spread_draws(b_wy) %>%
-  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
-
-m2.day90.wy %>%
-  spread_draws(b_wy) %>%
-  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
-```
-
-more scratch
-
-```{r}
-#| label: scratch
-
-benchmark_trends <-
-  pctl_days %>% 
-  ggplot(
-    # color points according to threshold (10, 50, 90%)
-    aes(x = wy, y = wd, color = percentile)
-  ) +
-  geom_point(size = 4) +
-  scale_color_fish(discrete = TRUE,
-                  option = "Oncorhynchus_tshawytscha",
-                  alpha = 0.6) +
-  geom_smooth(data = pctl_days %>% filter(wy > 1977),
-              alpha = 0.2,
-              # show linear trends
-              method = "lm",
-              se = TRUE) +
-  labs(title = "Chinook Salmon Outmigration Timing",
-       subtitle = "all months; 1977 excluded from trend analyses",
-       x = "Water Year",
-       y = "Day of the Water Year",
-       color = "Percentile") +
-  theme_bw()
 
 ```
