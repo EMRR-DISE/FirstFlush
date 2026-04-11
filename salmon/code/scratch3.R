@@ -166,4 +166,24 @@ benchmark_trends <-
        color = "Percentile") +
   theme_bw()
 
+# "outlier" is 1977
 
+# plotted data from 1992 (when seines were conducted monthly year round) to 2024; not used
+
+ggplot(daily_cum %>%
+         filter(wy >= 1992),
+       aes(x = wd,
+           y = cum_percent,
+           group = wy,
+           color = wy)) +
+  geom_line() +
+  xlim(0, 300) +
+  geom_hline(yintercept = c(10, 50, 90),
+             linetype = "dashed") +
+  scale_color_viridis_c(option = "mako") +
+  labs(x = "Day of Water Year",
+       y = "Cumulative % of Annual Total",
+       title = "Juvenile Chinook Accumulation Curves",
+       subtitle = "data from January - December, 1992-2024",
+       color = "water year") +
+  theme_bw()
