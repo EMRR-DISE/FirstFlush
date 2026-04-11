@@ -432,7 +432,7 @@ write_rds(m3.day10.wy, here("salmon/results/m3.day10.wy.rds"))
 ```
 
 ```{r}
-#| label: model-checks
+#| label: model-check1
  
 # run posterior predictive check
 pp_check(m3.day10.wy)
@@ -464,7 +464,7 @@ m3.day10.wy_robust <-
 ```
 
 ```{r}
-#| label: model-checks
+#| label: model-check2
 
 # looks a bit better!
 pp_check(m3.day10.wy_robust)
@@ -544,7 +544,7 @@ m3.day90.wy <-
 ```
 
 ```{r}
-#| label: model-checks
+#| label: model-check3
 
 summary(m3.day50.wy)
 summary(m3.day90.wy)
@@ -647,7 +647,7 @@ m1.day10.wy.wyt <-
 ```
 
 ```{r}
-#| label: model-check
+#| label: model-check4
 
 summary(m1.day10.wy.wyt)
 plot(m1.day10.wy.wyt)
@@ -721,7 +721,7 @@ m2.day10.wy.wyt <-
 ```
 
 ```{r}
-#| label: model-check
+#| label: model-check5
 
 summary(m2.day10.wy.wyt)
 plot(m2.day10.wy.wyt)
@@ -748,7 +748,7 @@ m3.day10.wy.wyt <-
 ```
 
 ```{r}
-#| label: model-check
+#| label: model-chec6
 
 # to be consistent, I should prob designate this model as 'robust', but can't be bothered
 summary(m3.day10.wy.wyt)
