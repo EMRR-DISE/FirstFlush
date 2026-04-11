@@ -674,7 +674,7 @@ wyt_effects$estimate <-
   round(wyt_effects$estimate__, 2)
 
 wyt_effects %>% 
-  select(-estimate__) %>% 
+  dplyr::select(-estimate__) %>% 
   mutate("l-95% CI" = lower__,
          "u-95% CI" = upper__,
          .keep = "unused")
