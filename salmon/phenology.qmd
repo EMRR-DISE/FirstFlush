@@ -60,7 +60,7 @@ fish_codes <-
 
 ```
 
-# wrangel data
+# wrangle data
 
 ## choose sites
 
