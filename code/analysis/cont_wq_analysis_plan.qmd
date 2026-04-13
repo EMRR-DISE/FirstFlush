@@ -1,0 +1,68 @@
+---
+title: "First Flush - Water Quality Analysis Plan"
+author: "Dave Bosworth"
+date: today
+date-format: long
+format:
+  html:
+    code-fold: true
+    code-tools: true
+execute:
+  message: false
+  warning: false
+---
+
+# WQ Hypotheses
+
+1. Turbidity will increase faster and higher during a first flush event compared to later storm events.
+2. Salinity will decrease more dramatically during first flush compared with other storms.
+3. Dissolved oxygen will decrease during first flush but recover afterwards.
+4. Chlorophyll will decrease more during first flush and stays low during later storm events.
+
+# Data Exploration
+
+1. Visual exploration of WQ time-series in relation to storm events at select stations
+
+    Stations:
+
+    - USGS Sacramento River at Freeport (11447650)
+    - DWR_CEMP San Joaquin River McCune Station near Vernalis (SJR)
+    - DWR_CEMP Sacramento River at Rio Vista Bridge (RVB)
+    - USGS San Joaquin River at Jersey Point (11337190)
+    - DWR_CEMP San Joaquin River at Prisoners Point (PPT)
+    - DWR-NCRO (WQES) Old River at Quimby Island near Bethel Island (B9520000)
+    - DWR-NCRO (WQES) Middle River near Holt (B9545800)
+    - DWR-NCRO (WQES) OBI at USGS Pile (B9525100)
+    - USGS Middle River at Middle River (11312676)
+    - USGS Old River near Byron (11313315)
+    - DWR-NCRO (WQES) Grant Line Canal near Clifton Court Forebay (B9529500)
+    - DWR-NCRO (WQES) Old River at Tracy Wildlife Association (B9537800)
+
+    a. Turbidity - most stations started around 2010
+        i. Increases in relation to storm events.
+        ii. Is it typically highest after first event of the year? Maybe look at rate or difference (pre vs. during) instead of raw values.
+        iii. How does turbidity increase downstream of SR at Freeport? Similar patterns, raw values, lag in response.
+        iv. Sacramento River vs. San Joaquin River - how do they compare? How often are storms occurring system-wide vs. in just one watershed?
+    b. Salinity
+    c. Dissolved Oxygen
+    d. Chlorophyll
+
+2. Other visuals besides time-series plots - boxplots?
+
+# Metrics
+
+1. Turbidity
+    a. temporal rate of increase or raw difference (before vs. during storm)
+    b. time lags at downstream stations (days between first day of storm and turbidity maximum)
+    c. spatial extent of turbidity increase
+    d. gradient calculations between SR and SJR influenced stations
+2. Salinity
+3. Dissolved Oxygen
+4. Chlorophyll
+
+# Statistical Analyses
+
+1. Turbidity
+2. Salinity
+3. Dissolved Oxygen
+4. Chlorophyll

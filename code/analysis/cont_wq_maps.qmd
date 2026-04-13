@@ -152,3 +152,34 @@ sf_stations_c1 %>%
   ) %>%
   datatable(filter = "top")
 ```
+
+# Turbidity Stations
+
+```{r}
+df_stations_analysis <- readRDS(
+  here("data/processed/wq/cont_wq_station_info_analysis.rds")
+)
+
+df_turbidity <- readRDS(here("data/processed/wq/turbidity_dv.rds"))
+
+# Convert to sf object, assume all coordinates are in WGS84
+sf_stations_analysis <- df_stations_analysis |>
+  filter(station_abbr %in% unique(df_turbidity$station_abbr)) |>
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326)
+
+sf_stations_analysis |>
+  mapview(
+    zcol = "data_source",
+    col.regions = pal_stations[c(1, 3, 5)],
+    label = "station_full_name",
+    layer.name = "Source",
+    cex = 5
+  ) +
+  mapview(
+    sf_regions,
+    zcol = "Region",
+    col.regions = pal_regions,
+    layer.name = "Region",
+    alpha.regions = 0.4
+  )
+```
