@@ -1,0 +1,178 @@
+---
+title: "hydrology"
+author: "Pete Nelson"
+editor: visual
+bibliography: references.bib
+---
+
+## introduction
+
+Using the approaches described in [@wang2024][@archfield2014], I've tried to characterize the flow regime for the Sacramento River as it enters the Delta. These include the Magnificent 7 [@archfield2014a; @helsel2020] as well as....
+
+## setup
+
+```{r}
+#| label: libraries
+
+library(Rbeast)
+library(hydrostats)
+library(envPred)
+
+```
+
+## data
+
+```{r}
+#| label: dayflow
+
+
+# dayflow
+flow <- read_excel(here("data/raw/dayflow.xlsx"))
+
+# convert to standard data.frame and fix the date class
+flow_df <- as.data.frame(flow[, c("Date", "SAC")])
+flow_df$Date <- as.Date(flow_df$Date)
+
+```
+
+## magnificent 7
+
+```{r}
+#| label: mag-7
+
+# run the function
+m7 <- calc_magnifSeven(flow_df)
+
+# view results
+print(m7)
+
+```
+
+**1. Magnitude and Variability (The "L-Moments")**
+
+The first four indices (`lam1` through `tau4`) use "L-moments," which are more robust versions of standard statistics like Mean and Skewness.
+
+-   **`lam1` (22,690.48):** This is the **Mean Daily Flow**. Your average flow at this location is roughly 22,691 cfs.
+
+-   **`tau2` (0.38):** This is **L-Coefficient of Variation**. A value of 0.38 indicates moderate variability. It’s not a steady canal, but it’s also not a "flashy" desert stream (which would be \> 0.6).
+
+-   **`tau3` (0.43):** This is **L-Skewness**. A value of 0.43 is quite high. It confirms that the Sacramento’s "average" is driven by a few massive flood events rather than consistent daily flow.
+
+-   **`tau4` (0.24):** This is **L-Kurtosis**. It measures the "fatness" of the tails. This suggests that extreme outliers (huge floods) happen more often than they would in a standard bell curve.
+
+------------------------------------------------------------------------
+
+**2. Persistence and Seasonality**
+
+-   **`ar1` (0.989):** This is **Autocorrelation**. A value of 0.989 is **extremely high**.
+
+    -   **Interpretation:** Today’s flow is 99% predicted by yesterday’s flow. This is typical of large, snow-fed rivers or regulated systems where flow doesn't change abruptly.
+
+-   **`amplitude` (0.630):** This is the **Seasonal Signal Strength**.
+
+    -   **Interpretation:** Since it’s closer to 1 than 0, the river has a strong, predictable seasonal cycle (likely the winter rain/spring snowmelt pattern).
+
+-   **`phase` (61.358):** This is the **Seasonal Timing** (in days).
+
+    -   **Interpretation:** A value of \~61 indicates that the peak of the seasonal "wave" occurs roughly 61 days into the water year (which starts Oct 1). This places the peak in **early December**.
+
+------------------------------------------------------------------------
+
+**Is it only useful for comparisons?**
+
+It is **mostly** used for comparisons, but it serves two distinct purposes:
+
+1.  **Hydrological Classification:** You can use these 7 numbers to "cluster" rivers. For example, rivers with `ar1` \> 0.9 and `amplitude` \> 0.5 are usually "Snowmelt/Large Basin" types.
+
+2.  **Model Validation:** If you are building a computer model to simulate the Sacramento River, your model's output should produce these same 7 numbers. If your model gives a `tau3` of 0.1, you know your model is failing to capture the big flood peaks.
+
+**⚓ Key Takeaway**
+
+Your results show a **large, highly predictable, highly persistent river** that is prone to **large, infrequent flood spikes** (high skewness).
+
+## environmental predictability
+
+Determine the predictability [@colwell1974] of flow in the Sacramento River using dayflow data (wy 1956-2026). Most useful as a tool for comparing different systems (e.g., Sac R vs SJR), I'm including this as a place holder for future work comparing (perhaps) multiple spawning tributaries.
+
+```{r}
+#| label: flow-table
+
+
+library(hydrostats)
+
+sac_envpred <-
+  flow_df %>% 
+  mutate(Q = SAC, .keep = "unused") %>% 
+  Colwells(.,
+           s = 11)
+
+sac_envpred$flow.table
+
+```
+
+Let's use library envPred to calculate environmental predictability and few other metrics.
+
+```{r}
+#| label: env-pred
+
+library(envPred)
+# scientific notation = FALSE
+options(scipen = 999)
+
+# some metrics I don't find useful
+metrics_i_want <- c("n_yrs", "n_days", "n_na",
+                    "unbounded_seasonality", "bounded_seasonality",
+                    "env_col",
+                    "colwell_p", "colwell_c", "colwell_m")
+
+sac_envpred2 <-
+  env_stats(time_series = flow_df$SAC,
+          dates = flow_df$Date,
+          n_states = 11,
+          delta = 1,
+          # assume the ts is evenly distributed, so use 'spectrum'
+          noise_method = "spectrum") %>% 
+  as.list() %>% 
+  as_tibble() %>% 
+  # pivot the output so it's easier to read
+  pivot_longer(cols = everything(),
+               names_to = "metric",
+               values_to = "value") %>% 
+  mutate(value = round(value, 4)) %>% 
+  filter(metric %in% metrics_i_want) %>% 
+  print()
+
+# log-transform the flow data
+sac_envpred3 <-
+  env_stats(time_series = log(flow_df$SAC),
+          dates = flow_df$Date,
+          n_states = 11,
+          delta = 1,
+          # assume the ts is evenly distributed, so use 'spectrum'
+          noise_method = "spectrum") %>% 
+  as.list() %>% 
+  as_tibble() %>% 
+  # pivot the output so it's easier to read
+  pivot_longer(cols = everything(),
+               names_to = "metric",
+               values_to = "value") %>% 
+  mutate(value = round(value, 4)) %>% 
+  filter(metric %in% metrics_i_want) %>% 
+  print()
+
+```
+
+## BEAST
+
+Bayesian Estimator of Abrupt change, Seasonality, and Trend (BEAST is a fast, generic Bayesian model averaging algorithm to decompose time series or 1D sequential data into individual components, such as abrupt changes, trends, and periodic or seasonal variations .
+
+```{r}
+
+sac_beast <-
+  beast(flow_df$SAC)
+
+print(sac_beast)
+plot(sac_beast)
+
+
+```
