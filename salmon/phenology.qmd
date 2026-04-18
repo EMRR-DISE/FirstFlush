@@ -64,6 +64,25 @@ fish_codes <-
 
 ```
 
+## storm data
+
+Let's pull in Rosie's storm data—I think this includes *first flush* events, both timing and magnitude.
+
+```{r}
+#| label: storm-data
+
+load(here("data/processed/storms/StormData.RData"))
+
+# use 'Firststorms'
+storms <-
+  Firststorms %>% 
+  arrange(WY) %>% 
+  mutate(wyd = get_waterYearDay(Date))
+
+saveRDS(storms, here("salmon/data/processed/storms.rds"))
+
+```
+
 # wrangle data
 
 ## choose sites
@@ -782,5 +801,122 @@ plot(m1.day10.wy.wyt$criteria$loo)
 plot(m2.day10.wy.wyt$criteria$loo)
 plot(m3.day10.wy.wyt$criteria$loo)
 # everything well below 0.7...
+
+```
+
+### first flush
+
+```{r}
+#| label: first-flush
+
+pctl_days_wyt <-
+  read_rds(here("salmon/data/processed/pctl_days_wyt.rds"))
+
+storms <- 
+  read_rds(here("salmon/data/processed/storms.rds"))
+# no first flush storms for 1977, 2020, 2022 and 2025--filter(is.na(WY))
+
+first_flush <-
+  pctl_days_wyt %>% 
+  # merge first flush data
+  left_join(storms, 
+            join_by(wy == WY),
+            keep = T) %>% 
+  dplyr::select(wy, percentile, wd, Date, SAC, WY) %>% 
+  # eliminate water years when there are no first flush data
+  filter(percentile == "day_10" & !is.na(WY)) %>% 
+  # determine the day of the water year when first flush occurred
+  mutate(ff_wyd = get_waterYearDay(Date),
+         .keep = "unused")
+
+first_flush %>% 
+  ggplot(aes(ff_wyd, wd)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  theme_bw()
+
+first_flush %>% 
+  ggplot(aes(x = ff_wyd, y = wd)) +
+  geom_point(aes(color = wy), size = 3) + # color by Year to see time trends
+  geom_smooth(method = "lm", color = "black", fill = "gray80") + 
+  scale_color_viridis_c() + # show chronological years
+  labs(
+    title = "Fish Migration Following First Flush Date",
+    x = "First Flush Timing (Water Year Day)",
+    y = "Day 10% Benchmark Reached (Water Year Day)",
+    color = "Water Year"
+  ) +
+  theme_bw()
+
+# calc correlation coefficient (r)
+cor(first_flush$ff_wyd, first_flush$wd, use = "complete.obs")
+
+# simple linear model
+m1.day10.ff <- lm(wd ~ ff_wyd, data = first_flush)
+
+summary(m1.day10.ff)
+
+m2.day10.ff <- 
+  brm(data = first_flush,
+      family = gaussian,
+      wd ~ ff_wyd,
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 42,
+      file = "salmon/results/m2.day10.ff")
+print(m2.day10.ff, digits = 4)
+plot(m2.day10.ff)
+
+m1.day10.ff.SAC <- 
+  brm(data = first_flush,
+      family = gaussian,
+      wd ~ ff_wyd + SAC,
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 42,
+      file = "salmon/results/m1.day10.ff.SAC")
+print(m1.day10.ff.SAC, digits = 4)
+plot(m1.day10.ff.SAC)
+
+# what's the poss that duration between ff & migration changes over time?
+# calc the difference btwn wd & ff_wyd
+first_flush <- first_flush %>% 
+  mutate(days_between = wd - ff_wyd)
+
+first_flush %>% 
+  ggplot(aes(x = wy, y = days_between)) +
+  geom_point(aes(color = SAC), size = 3) +
+  geom_smooth(method = "lm", color = "black", fill = "pink") + 
+  scale_color_viridis_c() + # show chronological years
+  labs(
+    title = "Time Elapsed from First Flush Event to the 10% Benchmark",
+    x = "Water Year",
+    y = "Lag (water year days)",
+    color = "SAC flow"
+  ) +
+  theme_bw()
+
+m1.day10.df <-
+  brm(data = first_flush,
+      family = gaussian,
+      days_between ~ wy,
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 42,
+      file = "salmon/results/m1.day10.df")
+print(m1.day10.df, digits = 4)
+plot(m1.day10.df)
+
+# Is there a change in the SIZE of salmon over the years?
+
+
+
+```
+
+### salmon sizes
+
+Is there a change in the *size* of salmon outmigrants over the years? ...as a function of first flush timing?
+
+```{r}
+#| label: salmon-size
+
+read_rds(here("salmon/data/raw/raw.rds"))
 
 ```

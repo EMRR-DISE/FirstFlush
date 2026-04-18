@@ -123,7 +123,9 @@ coverage <- dat %>%
 sta_reg <-
   coverage %>%
   distinct(station, region) %>% 
-  left_join(reg_labs, by = "region")
+  left_join(reg_labs, by = "region") %>% 
+  write_rds(., here("salmon/data/processed/sta_reg.rds"))
+
 ```
 
 ## data reduction+
@@ -168,6 +170,7 @@ dat <-
   mutate(sample_id = cur_group_id()) %>% 
   ungroup() %>% 
   relocate(sample_id)
+
 ```
 
 ## daily counts

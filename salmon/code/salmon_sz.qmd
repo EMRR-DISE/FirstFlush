@@ -1,0 +1,53 @@
+---
+title: "salmon size data"
+author: "Pete Nelson"
+editor: visual
+---
+
+```{r}
+
+raw <- read_rds(here("salmon/data/raw/raw.rds"))
+
+# list of beach seine station codes identified minimally adequate for 
+# temporal coverage
+good <- 
+  tibble(station = read_rds(here("salmon/data/processed/selected_site_codes.rds")))
+
+# select data from those minimum effort sites and for complete water years (1976-10-01 onwards)
+dat <-
+  raw %>% 
+  filter(station %in% good$station,
+         # limit to data collected during complete water years
+         date >= "1976-10-01") %>% 
+  mutate(year = year(date),
+         month = month(date)) %>% 
+  relocate(region, .after = id_code) %>% 
+  relocate(year:month, .before = date)
+
+salmon <-
+  dat %>% 
+  # add water year (wy) and day of water year (wd) variables
+  mutate(
+    # water year
+    wy = dataRetrieval::calcWaterYear(date),
+    # day of water year (wd), wyMonth=10L bc water year begins Oct 1
+    wd = EflowStats::get_waterYearDay(date, wyMonth = 10L)) %>% 
+  # reorg & select columns
+  relocate(wy:wd, .after = date) %>% 
+  dplyr::select(c(station:water_temp, organism_code, fork_length, race_by_length, count)) %>% 
+  # add 'sample_id' to identify each unique seine event
+  group_by(date, time, station) %>% 
+  mutate(sample_id = cur_group_id()) %>% 
+  ungroup() %>% 
+  relocate(sample_id) %>% 
+  mutate(org_code = if_else(organism_code == "CHN", "CHN", "NOFISH"),
+         # set fork_length = NA for NOFISH rows
+         fork_length = if_else(org_code == "NOFISH", NA_real_, fork_length),
+         # set count = 0 for NOFISH rows
+         count = if_else(org_code == "NOFISH", 0L, count)) %>% 
+  dplyr::select(c(sample_id:location, date:wd, water_temp, org_code, fork_length, race_by_length, count)) %>% 
+  ungroup() %>% 
+  write_rds(., here("salmon/data/processed/salmon.rds"))
+
+
+```

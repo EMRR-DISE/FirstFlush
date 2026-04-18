@@ -48,47 +48,27 @@ print(m7)
 
 ```
 
-**1. Magnitude and Variability (The "L-Moments")**
+### magnitude & variability
 
-The first four indices (`lam1` through `tau4`) use "L-moments," which are more robust versions of standard statistics like Mean and Skewness.
+The first four indices (`lam1` through `tau4`) use "L-moments," more robust versions of standard statistics like Mean and Skewness.
 
--   **`lam1` (22,690.48):** This is the **Mean Daily Flow**. Your average flow at this location is roughly 22,691 cfs.
+-   **`lam1` (22,690.48):** This is the *mean daily flow* (cfs) at this location.
 
--   **`tau2` (0.38):** This is **L-Coefficient of Variation**. A value of 0.38 indicates moderate variability. It’s not a steady canal, but it’s also not a "flashy" desert stream (which would be \> 0.6).
+-   **`tau2` (0.38):** This is the *L-Coefficient of Variation*. A value of 0.38 indicates moderate variability. It’s not a steady canal, but it’s also not a "flashy" desert stream (\> 0.6).
 
--   **`tau3` (0.43):** This is **L-Skewness**. A value of 0.43 is quite high. It confirms that the Sacramento’s "average" is driven by a few massive flood events rather than consistent daily flow.
+-   **`tau3` (0.43):** This is the *L-Skewness*. A value of 0.43 is quite high. It confirms that the Sacramento’s "average" is driven by a few massive flood events rather than consistent daily flow.
 
--   **`tau4` (0.24):** This is **L-Kurtosis**. It measures the "fatness" of the tails. This suggests that extreme outliers (huge floods) happen more often than they would in a standard bell curve.
+-   **`tau4` (0.24):** This is the *L-Kurtosis*. It measures the "fatness" of the tails. This suggests that extreme outliers (huge floods) happen more often than they would in a standard bell curve.
 
-------------------------------------------------------------------------
+### persistence & seasonality
 
-**2. Persistence and Seasonality**
+-   **`ar1` (0.989):** This is a measure of *autocorrelation*. A value of 0.989 is extremely high, but typical of large rivers or regulated systems where flow does not change abruptly.
 
--   **`ar1` (0.989):** This is **Autocorrelation**. A value of 0.989 is **extremely high**.
+-   **`amplitude` (0.630):** This is the *seasonal signal strength*. With a fairly high value—closer to 1 than 0--, this is indicative of a strong seasonal cycle (i.e., winter rain and spring snowmelt).
 
-    -   **Interpretation:** Today’s flow is 99% predicted by yesterday’s flow. This is typical of large, snow-fed rivers or regulated systems where flow doesn't change abruptly.
+-   **`phase` (61.358):** This is the *seasonal timing* (in days). A value of ca. 61 indicates that the peak of the seasonal "wave" occurs roughly 61 days into the water year (early December).
 
--   **`amplitude` (0.630):** This is the **Seasonal Signal Strength**.
-
-    -   **Interpretation:** Since it’s closer to 1 than 0, the river has a strong, predictable seasonal cycle (likely the winter rain/spring snowmelt pattern).
-
--   **`phase` (61.358):** This is the **Seasonal Timing** (in days).
-
-    -   **Interpretation:** A value of \~61 indicates that the peak of the seasonal "wave" occurs roughly 61 days into the water year (which starts Oct 1). This places the peak in **early December**.
-
-------------------------------------------------------------------------
-
-**Is it only useful for comparisons?**
-
-It is **mostly** used for comparisons, but it serves two distinct purposes:
-
-1.  **Hydrological Classification:** You can use these 7 numbers to "cluster" rivers. For example, rivers with `ar1` \> 0.9 and `amplitude` \> 0.5 are usually "Snowmelt/Large Basin" types.
-
-2.  **Model Validation:** If you are building a computer model to simulate the Sacramento River, your model's output should produce these same 7 numbers. If your model gives a `tau3` of 0.1, you know your model is failing to capture the big flood peaks.
-
-**⚓ Key Takeaway**
-
-Your results show a **large, highly predictable, highly persistent river** that is prone to **large, infrequent flood spikes** (high skewness).
+These results show a **large, highly predictable, highly persistent river** that is prone to **large, infrequent flood spikes** (high skewness).
 
 ## environmental predictability
 
@@ -164,15 +144,31 @@ sac_envpred3 <-
 
 ## BEAST
 
-Bayesian Estimator of Abrupt change, Seasonality, and Trend (BEAST is a fast, generic Bayesian model averaging algorithm to decompose time series or 1D sequential data into individual components, such as abrupt changes, trends, and periodic or seasonal variations .
+*Bayesian Estimator of Abrupt change, Seasonality, and Trend* (BEAST) is a Bayesian model averaging algorithm, used to decompose time series into individual components, including abrupt changes, trends, and periodic or seasonal variations .
 
 ```{r}
+#| label: time-series
 
 sac_beast <-
-  beast(flow_df$SAC)
+  beast(flow_df$SAC, 
+        deltat = 1/365.25, 
+        start = 1955,
+        period = 1,
+        mcmc.samples = 10000, # increased for better convergence
+        max.trend.knots = 30, # default (10) had it maxing out
+        max.season.knots = 20) # allow more seasonal shifts
 
 print(sac_beast)
+saveRDS(sac_beast, here("salmon/results/sac_beast.rds"))
+
 plot(sac_beast)
 
+pdf(here("salmon/plots/SacR_ts.pdf"), width = 11, height = 8.5)
+plot(sac_beast)
+
+png(here("salmon/plots/SacR_ts.png"), width = 2400, height = 1800, res = 300)
+plot(sac_beast)
+
+dev.off()
 
 ```

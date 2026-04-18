@@ -9,3 +9,4 @@ selected_sites.rds
 sta_reg.rds
 stations_with_regions.csv
 pctl_days_wyt.rds
+salmon.rds
