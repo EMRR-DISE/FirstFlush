@@ -4,6 +4,10 @@ author: "Pete Nelson"
 editor: visual
 ---
 
+## raw salmon data
+
+Pull in raw beach seine data and filter to select "good" sites and focus on Chinook salmon.
+
 ```{r}
 
 raw <- read_rds(here("salmon/data/raw/raw.rds"))
@@ -13,7 +17,8 @@ raw <- read_rds(here("salmon/data/raw/raw.rds"))
 good <- 
   tibble(station = read_rds(here("salmon/data/processed/selected_site_codes.rds")))
 
-# select data from those minimum effort sites and for complete water years (1976-10-01 onwards)
+# select data from those minimum effort sites and 
+# for complete water years (1976-10-01 onwards)
 dat <-
   raw %>% 
   filter(station %in% good$station,
@@ -22,10 +27,7 @@ dat <-
   mutate(year = year(date),
          month = month(date)) %>% 
   relocate(region, .after = id_code) %>% 
-  relocate(year:month, .before = date)
-
-salmon <-
-  dat %>% 
+  relocate(year:month, .before = date) %>% 
   # add water year (wy) and day of water year (wd) variables
   mutate(
     # water year
@@ -34,7 +36,8 @@ salmon <-
     wd = EflowStats::get_waterYearDay(date, wyMonth = 10L)) %>% 
   # reorg & select columns
   relocate(wy:wd, .after = date) %>% 
-  dplyr::select(c(station:water_temp, organism_code, fork_length, race_by_length, count)) %>% 
+  dplyr::select(c(
+    station:water_temp, organism_code, fork_length, race_by_length, count)) %>% 
   # add 'sample_id' to identify each unique seine event
   group_by(date, time, station) %>% 
   mutate(sample_id = cur_group_id()) %>% 
@@ -45,9 +48,148 @@ salmon <-
          fork_length = if_else(org_code == "NOFISH", NA_real_, fork_length),
          # set count = 0 for NOFISH rows
          count = if_else(org_code == "NOFISH", 0L, count)) %>% 
-  dplyr::select(c(sample_id:location, date:wd, water_temp, org_code, fork_length, race_by_length, count)) %>% 
-  ungroup() %>% 
-  write_rds(., here("salmon/data/processed/salmon.rds"))
+  dplyr::select(c(
+    sample_id:location, date:wd, water_temp, org_code, 
+    fork_length, race_by_length, count)) %>% 
+  ungroup()
 
+
+```
+
+### pivot wide
+
+```{r}
+
+
+salmon <- dat %>%
+  # force to character to ensure exact matching in pivot_wider
+  mutate(org_code = as.character(org_code)) %>%
+  # group by all identifier columns
+  group_by(sample_id, station, location, date, wy, wd, water_temp, org_code) %>%
+  summarise(
+    total_count = sum(count, na.rm = TRUE),
+    n_length = sum(!is.na(fork_length)),
+    mean_length = mean(fork_length, na.rm = TRUE),
+    sd_length = sd(fork_length, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  # pivot using explicit names
+  pivot_wider(
+    names_from = org_code,
+    values_from = c(total_count, n_length, mean_length, sd_length)
+  ) %>%
+  # replace NAs in the Chinook count column with 0 if needed
+  mutate(total_count_CHN = replace_na(total_count_CHN, 0)) %>% 
+  # have sample_id's where total_count_CHN = 0, so 'NOFISH' is unneeded
+  dplyr::select(-ends_with("NOFISH"))
+
+# verify CHN counts
+sum(salmon$total_count_CHN, na.rm = TRUE)
+
+
+```
+
+## size over time
+
+Re-summarise salmon data to collect individual FLs for each water year, limited to days prior to the 10% benchmark.
+
+```{r}
+
+pctl10_days_wyt <-
+  read_rds(here("salmon/data/processed/pctl_days_wyt.rds")) %>% 
+  filter(percentile == "day_10")
+
+# join the datasets by Water Year (wy)
+chn_subset <- dat %>%
+  filter(org_code == "CHN") %>%
+  inner_join(
+    pctl10_days_wyt %>% 
+      dplyr::select(wy, threshold_wd = wd, wyt), by = "wy") %>%
+  # filter for fish that arrived on or before the 10th percentile day
+  filter(wd <= threshold_wd)
+
+# check on summary code
+chn_subset %>%
+  group_by(wy) %>%
+  summarise(
+    max_day_captured = max(wd),
+    threshold_was = first(threshold_wd),
+    n_fish = n()
+  )
+
+# calc means by Water Year and Type
+fork_length_summary <- 
+  chn_subset %>%
+  group_by(wy, wyt) %>%
+  summarize(
+    mean_fl = mean(fork_length, na.rm = TRUE),
+    sd_fl = sd(fork_length, na.rm = TRUE),
+    n_fish = n(),
+    se_fl = sd_fl / sqrt(n_fish), # SE for error bars
+    .groups = "drop"
+  ) %>% 
+  # remove wy 2025 bc no year type designation yet
+  filter(wyt != is.na(wyt))
+
+# view summary
+print(fork_length_summary) %>% print(n = 55)
+
+fork_length_summary %>% 
+ggplot(aes(x = wy, y = mean_fl, color = wyt)) +
+  geom_line(color = "gray80", group = 1) + # line to show temporal connection
+  geom_errorbar(aes(ymin = mean_fl - se_fl, 
+                    ymax = mean_fl + se_fl), 
+                width = 0.2) +
+  geom_point(size = 3) +
+  # apply reversed (drier are lighter) color scale for ordered year types
+  scale_color_viridis_d(direction = -1) + 
+  labs(
+    title = "Mean Fork Length of Early Migrating Chinook (First 10%)",
+    x = "Water Year",
+    y = "Mean Fork Length (+/- SE, mm)",
+    color = "Year Type"
+  ) +
+  theme_bw()
+
+size_lr <- lm(mean_fl ~ wy, data = fork_length_summary)
+summary(size_lr)
+# nothing!
+
+fork_length_summary %>% 
+  ggplot(aes(x = wyt, y = mean_fl, fill = wyt)) +
+  geom_boxplot(alpha = 0.7) +
+  # show individual years as dots
+  geom_jitter(width = 0.1, size = 2) + 
+  # add this line to reverse the fill colors
+  scale_fill_viridis_d(direction = -1) + 
+  labs(
+    title = "Annual Outmigrant Chinook Fork Lengths by Water Year Type",
+    subtitle = "first 10% of that year's cohort",
+    x = "Water Year Type",
+    y = "Fork Length (mm)"
+  ) +
+  theme_bw() +
+  guides(fill = "none") # remove legend since X axis covers it
+
+fork_length_summary %>% 
+  ggplot(aes(x = wyt, y = mean_fl, fill = wyt)) +
+  geom_violin(alpha = 0.7) +
+  # show individual years as dots
+  geom_jitter(width = 0.1, size = 2) + 
+  # add this line to reverse the fill colors
+  scale_fill_viridis_d(direction = -1) + 
+  labs(
+    title = "Annual Outmigrant Chinook Fork Lengths by Water Year Type",
+    subtitle = "first 10% of that year's cohort",
+    x = "Water Year Type",
+    y = "Fork Length (mm)"
+  ) +
+  theme_bw() +
+  guides(fill = "none") # remove legend since X axis covers it
+
+# test for significant differences between Water Year Types
+anova_res <- aov(mean_fl ~ wyt, data = fork_length_summary)
+summary(anova_res)
+# no surprise here...
 
 ```

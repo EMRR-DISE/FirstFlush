@@ -32,7 +32,7 @@ library(fishualize)
 library(tidybayes)
 ```
 
-# data
+# beach seine data
 
 Load beach seine data from the DJFMP. Relies on partially cleaned data.
 
@@ -963,4 +963,42 @@ plot(m1.day10.wy.wyt$criteria$loo)
 plot(m2.day10.wy.wyt$criteria$loo)
 plot(m3.day10.wy.wyt$criteria$loo)
 # everything well below 0.7...
+```
+
+# trawl data
+
+```{r}
+dt1 <- read_rds(here("salmon/data/raw/dt1.rds")) %>% 
+  mutate(across(c(
+    DO, SpecificConductance, TowDuration, Turbidity, TurbidityFnu), 
+    ~ as.numeric(.)),
+    .keep = "unused")
+
+dt2 <- read_rds(here("salmon/data/raw/dt2.rds"))
+
+compare_df_cols(dt1, dt2) %>% view()
+
+dt_full <- bind_rows(dt1, dt2)
+
+raw <- 
+  dt_full %>% 
+  # provide good names
+  clean_names() %>% 
+  # chng region & station to chr (factors interfere w regularization later)
+  # fix date & time variables, originally as chr
+  mutate(region = as.character(region_code),
+         station = as.character(station_code),
+         date = mdy(sample_date),
+         time = times(sample_time),
+         .keep = "unused") %>% 
+  # generate a sample unit (unique sample event) code
+  group_by(station, date, time, method_code) %>% 
+  mutate(sample_id = cur_group_id()) %>% 
+  relocate(sample_id, station, location, date, time) %>% 
+  ungroup()
+
+# view all of the Chipps Island (location) stations
+temp <- raw %>% filter(location == "Chipps Island")
+distinct(temp, station)
+
 ```

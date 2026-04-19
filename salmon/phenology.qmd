@@ -905,18 +905,7 @@ print(m1.day10.df, digits = 4)
 plot(m1.day10.df)
 
 # Is there a change in the SIZE of salmon over the years?
+# see 'salmon_sz.qmd'
 
-
-
-```
-
-### salmon sizes
-
-Is there a change in the *size* of salmon outmigrants over the years? ...as a function of first flush timing?
-
-```{r}
-#| label: salmon-size
-
-read_rds(here("salmon/data/raw/raw.rds"))
 
 ```
