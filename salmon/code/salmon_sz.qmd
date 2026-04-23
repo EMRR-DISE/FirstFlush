@@ -1,6 +1,8 @@
 ---
 title: "salmon size data"
 author: "Pete Nelson"
+format: html
+embed-resources: true
 editor: visual
 ---
 

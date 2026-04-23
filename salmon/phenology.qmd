@@ -1,6 +1,11 @@
 ---
 title: "salmon outmigrant phenology"
 author: "Pete Nelson"
+format: 
+  html:
+    embed-resources: true
+execute:
+  execute-dir: project
 editor: visual
 ---
 
@@ -213,6 +218,8 @@ daily_cum <-
   arrange(wy, month, wd) %>% 
   ungroup()
 
+write_rds(daily_cum, here("salmon/data/processed/daily_cum.rds"))
+
 # calc cumulative percentage for each wy but limited to the period from Jan 1-Mar 31
 # Jan 1 is wd 93; Mar 31 is wd 182 (leap years, it's 183 but I'm going to ignore this)
 
@@ -229,11 +236,14 @@ daily_cum_limited <-
   arrange(wy, month, wd) %>% 
   ungroup()
 
+write_rds(daily_cum_limited, here("salmon/data/processed/daily_cum_limited.rds"))
+
 ```
 
 ```{r}
 #| label: accum-curves
 #| message: false
+#| warning: false
 
 daily_cum %>% 
   arrange(wy, wd) %>% 
@@ -250,9 +260,9 @@ ggplot(aes(x = wd,
   geom_hline(yintercept = c(10, 50, 90),
              linetype = "dashed") +
   scale_color_viridis_c(option = "mako") +
-  # highlight 1977 data as an apparent outlier
+  # highlight 1977 data
   annotate("text", x = 250, y = 30,
-           label = "1977", color = "red", fontface = "bold") +
+           label = "1977 (N=13)", color = "red", fontface = "bold") +
   labs(x = "Day of Water Year",
        y = "Cumulative % of Annual Total",
        title = "Juvenile Chinook Accumulation Curves",
@@ -279,7 +289,7 @@ ggplot(daily_cum_limited,
              linetype = "dashed") +
   scale_color_viridis_c(option = "mako") +
   annotate("text", x = 190, y = 30,
-           label = "1977", color = "red", fontface = "bold") +
+           label = "1977 (N=13)", color = "red", fontface = "bold") +
   labs(x = "Day of Water Year",
        y = "Cumulative % of Annual Total",
        title = "Juvenile Chinook Accumulation Curves",
@@ -288,6 +298,7 @@ ggplot(daily_cum_limited,
   theme_bw()
 
 ggsave(here("salmon/plots/accum_jan2mar.png"))
+
 ```
 
 ## benchmarks
@@ -412,8 +423,10 @@ benchmark_trends_limited <-
        subtitle = "data from January-March only; 1977 excluded from trend analyses",
        x = "Water Year",
        y = "Day of the Water Year",
-       color = "Percentile") +
+       color = "benchmark") +
   theme_bw()
+
+ggsave(here("salmon/plots/benchmark_trends_limited.png"))
 
 benchmark_trends_limited
 
@@ -433,6 +446,13 @@ Testing for a water year effect, focusing first on the *day10* benchmark, when 1
 
 # first including data from 1977
 # reaching the 10% benchmark
+
+proj_root <- here::here()
+results_dir <- file.path(proj_root, "salmon", "results")
+if (!dir.exists(results_dir)) {
+  dir.create(results_dir, recursive = TRUE)
+}
+
 m3.day10.wy <- 
   brm(data = percentile_days_limited, # use the percentile_days_limited data
       # use a gaussian (normal) distribution
@@ -442,11 +462,9 @@ m3.day10.wy <-
       # specify parameters for executing the Markov chains
       iter = 2000, warmup = 1000, chains = 4, cores =4,
       # set seed
-      seed = 42,
-      file = here("salmon/results/m3.day10.wy"),
-      file_refit = "on_change")
+      seed = 42)
 
-write_rds(m3.day10.wy, here("salmon/results/m3.day10.wy.rds"))
+# write_rds(m3.day10.wy, here("salmon/results/m3.day10.wy.rds"))
 
 ```
 
@@ -477,9 +495,9 @@ m3.day10.wy_robust <-
       # apply loo_moment_match on problematic observations bc crazy 1977 outlier
       save_pars = save_pars(all = TRUE),
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42,
-      file = here("salmon/results/m3.day10.wy_robust"),
-      file_refit = "on_change")
+      seed = 42)
+      
+write_rds(m3.day10.wy_robust, here("salmon/results/m3.day10.wy_robust.rds"))
 ```
 
 ```{r}
@@ -545,9 +563,9 @@ m3.day50.wy <-
       family = gaussian,
       day_50 ~ 1 + wy,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42,
-      file = here("salmon/results/m3.day50.wy"),
-      file_refit = "on_change")
+      seed = 42)
+
+write_rds(m3.day50.wy, here("salmon/results/m3.day50.wy.rds"))
 
 # reaching the 90% benchmark
 m3.day90.wy <- 
@@ -555,11 +573,9 @@ m3.day90.wy <-
       family = gaussian,
       day_90 ~ 1 + wy,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42,
-      file = here("salmon/results/m3.day90.wy"),
-      file_refit = "on_change")
+      seed = 42)
 
-
+write_rds(m3.day90.wy, here("salmon/results/m3.day90.wy.rds"))
 ```
 
 ```{r}
@@ -658,11 +674,11 @@ m1.day10.wy.wyt <-
       family = gaussian,
       wd ~ 0 + wy_centered + mo(wyt), 
       iter = 10000, warmup = 1000, chains = 4, cores = 4, 
-      seed = 42,
-      # save fitted model (this one w the wy centered)
-      file = here("salmon/results/m1.day10.wy.wyt"),
-      file_refit = "on_change"
-  )
+      seed = 42)
+
+# save fitted model (this one w the wy centered)
+write_rds(m1.day10.wy.wyt, here("salmon/results/m1.day10.wy.wyt.rds"))
+
 ```
 
 ```{r}
@@ -731,11 +747,10 @@ m2.day10.wy.wyt <-
       family = gaussian,
       wd ~ 0 + wy_centered * wyt, 
       iter = 10000, warmup = 1000, chains = 4, cores = 4, 
-      seed = 42,
-      # save fitted model (this one w the wy centered)
-      file = here("salmon/results/m2.day10.wy.wyt"),
-      file_refit = "on_change"
-  )
+      seed = 42)
+
+# save fitted model (this one w the wy centered)
+write_rds(m2.day10.wy.wyt, here("salmon/results/m2.day10.wy.wyt.rds"))
 
 ```
 
@@ -758,11 +773,9 @@ m3.day10.wy.wyt <-
       family = student,
       wd ~ 0 + wy_centered * wyt, 
       iter = 10000, warmup = 1000, chains = 4, cores = 4, 
-      seed = 42,
-      # save fitted model (this one w the wy centered)
-      file = here("salmon/results/m3.day10.wy.wyt"),
-      file_refit = "on_change"
-  )
+      seed = 42)
+
+write_rds(m3.day10.wy.wyt, here("salmon/results/m3.day10.wy.wyt.rds"))
 
 ```
 
@@ -861,20 +874,20 @@ m2.day10.ff <-
       family = gaussian,
       wd ~ ff_wyd,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42,
-      file = "salmon/results/m2.day10.ff")
+      seed = 42)
 print(m2.day10.ff, digits = 4)
 plot(m2.day10.ff)
+write_rds(m2.day10.ff, here("salmon/results/m2.day10.ff.rds"))
 
 m1.day10.ff.SAC <- 
   brm(data = first_flush,
       family = gaussian,
       wd ~ ff_wyd + SAC,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42,
-      file = "salmon/results/m1.day10.ff.SAC")
+      seed = 42)
 print(m1.day10.ff.SAC, digits = 4)
 plot(m1.day10.ff.SAC)
+write_rds(m1.day10.ff.SAC, here("salmon/results/m1.day10.ff.SAC.rds"))
 
 # what's the poss that duration between ff & migration changes over time?
 # calc the difference btwn wd & ff_wyd
@@ -899,10 +912,10 @@ m1.day10.df <-
       family = gaussian,
       days_between ~ wy,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42,
-      file = "salmon/results/m1.day10.df")
+      seed = 42)
 print(m1.day10.df, digits = 4)
 plot(m1.day10.df)
+write_rds(m1.day10.df, here("salmon/results/m1.day10.df.rds"))
 
 # Is there a change in the SIZE of salmon over the years?
 # see 'salmon_sz.qmd'

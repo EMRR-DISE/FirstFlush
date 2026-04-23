@@ -52,21 +52,21 @@ print(m7)
 
 The first four indices (`lam1` through `tau4`) use "L-moments," more robust versions of standard statistics like Mean and Skewness.
 
--   **`lam1` (22,690.48):** This is the *mean daily flow* (cfs) at this location.
+- **`lam1` (22,690.48):** This is the *mean daily flow* (cfs) at this location.
 
--   **`tau2` (0.38):** This is the *L-Coefficient of Variation*. A value of 0.38 indicates moderate variability. It’s not a steady canal, but it’s also not a "flashy" desert stream (\> 0.6).
+- **`tau2` (0.38):** This is the *L-Coefficient of Variation*. A value of 0.38 indicates moderate variability. It’s not a steady canal, but it’s also not a "flashy" desert stream (\> 0.6).
 
--   **`tau3` (0.43):** This is the *L-Skewness*. A value of 0.43 is quite high. It confirms that the Sacramento’s "average" is driven by a few massive flood events rather than consistent daily flow.
+- **`tau3` (0.43):** This is the *L-Skewness*. A value of 0.43 is quite high. It confirms that the Sacramento’s "average" is driven by a few massive flood events rather than consistent daily flow.
 
--   **`tau4` (0.24):** This is the *L-Kurtosis*. It measures the "fatness" of the tails. This suggests that extreme outliers (huge floods) happen more often than they would in a standard bell curve.
+- **`tau4` (0.24):** This is the *L-Kurtosis*. It measures the "fatness" of the tails. This suggests that extreme outliers (huge floods) happen more often than they would in a standard bell curve.
 
 ### persistence & seasonality
 
--   **`ar1` (0.989):** This is a measure of *autocorrelation*. A value of 0.989 is extremely high, but typical of large rivers or regulated systems where flow does not change abruptly.
+- **`ar1` (0.989):** This is a measure of *autocorrelation*. A value of 0.989 is extremely high, but typical of large rivers or regulated systems where flow does not change abruptly.
 
--   **`amplitude` (0.630):** This is the *seasonal signal strength*. With a fairly high value—closer to 1 than 0--, this is indicative of a strong seasonal cycle (i.e., winter rain and spring snowmelt).
+- **`amplitude` (0.630):** This is the *seasonal signal strength*. With a fairly high value—closer to 1 than 0--, this is indicative of a strong seasonal cycle (i.e., winter rain and spring snowmelt).
 
--   **`phase` (61.358):** This is the *seasonal timing* (in days). A value of ca. 61 indicates that the peak of the seasonal "wave" occurs roughly 61 days into the water year (early December).
+- **`phase` (61.358):** This is the *seasonal timing* (in days). A value of ca. 61 indicates that the peak of the seasonal "wave" occurs roughly 61 days into the water year (early December).
 
 These results show a **large, highly predictable, highly persistent river** that is prone to **large, infrequent flood spikes** (high skewness).
 
