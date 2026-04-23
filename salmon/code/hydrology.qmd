@@ -14,9 +14,13 @@ Using the approaches described in [@wang2024][@archfield2014], I've tried to cha
 ```{r}
 #| label: libraries
 
+library(here)
+library(tidyverse)
 library(Rbeast)
 library(hydrostats)
 library(envPred)
+library(readxl)
+library(EflowStats)
 
 ```
 
@@ -77,9 +81,6 @@ Determine the predictability [@colwell1974] of flow in the Sacramento River usin
 ```{r}
 #| label: flow-table
 
-
-library(hydrostats)
-
 sac_envpred <-
   flow_df %>% 
   mutate(Q = SAC, .keep = "unused") %>% 
@@ -95,11 +96,10 @@ Let's use library envPred to calculate environmental predictability and few othe
 ```{r}
 #| label: env-pred
 
-library(envPred)
 # scientific notation = FALSE
 options(scipen = 999)
 
-# some metrics I don't find useful
+# select the metrics I find useful
 metrics_i_want <- c("n_yrs", "n_days", "n_na",
                     "unbounded_seasonality", "bounded_seasonality",
                     "env_col",
@@ -140,6 +140,8 @@ sac_envpred3 <-
   filter(metric %in% metrics_i_want) %>% 
   print()
 
+# you can ignore the warning about the ts starting/ending diff times of the year
+
 ```
 
 ## BEAST
@@ -163,12 +165,9 @@ saveRDS(sac_beast, here("salmon/results/sac_beast.rds"))
 
 plot(sac_beast)
 
-pdf(here("salmon/plots/SacR_ts.pdf"), width = 11, height = 8.5)
+pdf("salmon/plots/SacR_ts.pdf", width = 11, height = 8.5)
 plot(sac_beast)
 
-png(here("salmon/plots/SacR_ts.png"), width = 2400, height = 1800, res = 300)
-plot(sac_beast)
-
-dev.off()
+# png("salmon/plots/SacR_ts.png", width = 2400, height = 1800, res = 300)
 
 ```
