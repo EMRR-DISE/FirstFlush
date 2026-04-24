@@ -32,7 +32,7 @@ library(fishualize)
 library(tidybayes)
 ```
 
-# data
+# beach seine data
 
 Load beach seine data from the DJFMP. Relies on partially cleaned data.
 
@@ -123,7 +123,9 @@ coverage <- dat %>%
 sta_reg <-
   coverage %>%
   distinct(station, region) %>% 
-  left_join(reg_labs, by = "region")
+  left_join(reg_labs, by = "region") %>% 
+  write_rds(., here("salmon/data/processed/sta_reg.rds"))
+
 ```
 
 ## data reduction+
@@ -132,19 +134,19 @@ Add water year and day of water year to the data frame.
 
 Notes:
 
--   trawl data (esp Chipps Island)
+- trawl data (esp Chipps Island)
 
--   try 1992+
+- try 1992+
 
--   check time window (does NOT seem to be have been effective)
+- check time window (does NOT seem to be have been effective)
 
--   spatial partitioning by rm, bin by region or subregion
+- spatial partitioning by rm, bin by region or subregion
 
--   beach seine data should still be helpful for teasing out the source of these juveniles (Am R, Feather, SJR, etc)
+- beach seine data should still be helpful for teasing out the source of these juveniles (Am R, Feather, SJR, etc)
 
--   seine data useful for looking at the Delta rearing duration too
+- seine data useful for looking at the Delta rearing duration too
 
--   don't worry now about run type
+- don't worry now about run type
 
 ```{r}
 # add water year and day of water year
@@ -168,6 +170,7 @@ dat <-
   mutate(sample_id = cur_group_id()) %>% 
   ungroup() %>% 
   relocate(sample_id)
+
 ```
 
 ## daily counts
@@ -766,11 +769,11 @@ I ran multiple Bayesian linear models to look at the timing of juvenile salmon o
 
 Regarding results from analysis of the January-March data only, the 10% and 50% models' credible intervals provide strong evidence that the slopes are different from zero, however, the posterior distribution for the 90% model overlaps 0 slightly (95% CIs: -0.73, 0.05).
 
--   For the 10% accumulation model, there was an estimated slope of -0.69 days per year (probability the slope is \<0 = 0.999)
+- For the 10% accumulation model, there was an estimated slope of -0.69 days per year (probability the slope is \<0 = 0.999)
 
--   For the 50% accumulation model, there was an estimated slope of -0.70 days per year (probability the slope is \<0 = 1.000)
+- For the 50% accumulation model, there was an estimated slope of -0.70 days per year (probability the slope is \<0 = 1.000)
 
--   For the 90% accumulation model, there was an estimated slope -0.33 days per year (probability the slope is \<0 = 0.955)
+- For the 90% accumulation model, there was an estimated slope -0.33 days per year (probability the slope is \<0 = 0.955)
 
 ## water year type
 
@@ -960,4 +963,42 @@ plot(m1.day10.wy.wyt$criteria$loo)
 plot(m2.day10.wy.wyt$criteria$loo)
 plot(m3.day10.wy.wyt$criteria$loo)
 # everything well below 0.7...
+```
+
+# trawl data
+
+```{r}
+dt1 <- read_rds(here("salmon/data/raw/dt1.rds")) %>% 
+  mutate(across(c(
+    DO, SpecificConductance, TowDuration, Turbidity, TurbidityFnu), 
+    ~ as.numeric(.)),
+    .keep = "unused")
+
+dt2 <- read_rds(here("salmon/data/raw/dt2.rds"))
+
+compare_df_cols(dt1, dt2) %>% view()
+
+dt_full <- bind_rows(dt1, dt2)
+
+raw <- 
+  dt_full %>% 
+  # provide good names
+  clean_names() %>% 
+  # chng region & station to chr (factors interfere w regularization later)
+  # fix date & time variables, originally as chr
+  mutate(region = as.character(region_code),
+         station = as.character(station_code),
+         date = mdy(sample_date),
+         time = times(sample_time),
+         .keep = "unused") %>% 
+  # generate a sample unit (unique sample event) code
+  group_by(station, date, time, method_code) %>% 
+  mutate(sample_id = cur_group_id()) %>% 
+  relocate(sample_id, station, location, date, time) %>% 
+  ungroup()
+
+# view all of the Chipps Island (location) stations
+temp <- raw %>% filter(location == "Chipps Island")
+distinct(temp, station)
+
 ```
