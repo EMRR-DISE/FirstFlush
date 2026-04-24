@@ -72,7 +72,7 @@ unmarked_chinook <- sqlQuery(channel, unmarked_query) %>%
 
 wr_lad <- unmarked_chinook %>%
   filter(
-    !is.na(DNA_Race),
+    !is.na(DNA_Run),
     LAD == "w"
   ) %>%
   mutate(
@@ -82,7 +82,7 @@ wr_lad <- unmarked_chinook %>%
   group_by(water_year) %>%
   summarize(
     total_wrlad = n(),
-    genetic_wrlad = sum(DNA_Race == "W", na.rm = TRUE)
+    genetic_wrlad = sum(DNA_Run == "W", na.rm = TRUE)
   ) %>%
   mutate(
     percent_genetic_wrlad = genetic_wrlad / total_wrlad * 100,
@@ -112,7 +112,9 @@ wr_lad_bar_chart <- ggplot(
   ) +
   scale_fill_manual(values = c("LAD" = "blue", "Genetic" = "orange")) +
   theme_classic()
+
 wr_lad_bar_chart
+
 ggsave(
   filename = "figures/wr_lad_bar_chart.png",
   plot = wr_lad_bar_chart,
@@ -120,5 +122,53 @@ ggsave(
   height = 3,
   dpi = 300
   )
+
+#what if I want all salmon?
+salmon_query <- "
+SELECT
+  s.SampleDate,
+  s.SampleTime,
+  d.IDNumber,
+  l.ForkLength,
+  l.LengthFrequency,
+  d.DNA_Run,
+  d.Probability,
+  b.BuildingCode,
+  c.Count
+FROM
+  (((Length l
+  LEFT JOIN DNAandCWTRun AS d ON l.LengthRowID = d.LengthRowID)
+  LEFT JOIN Catch AS c ON c.CatchRowID = l.CatchRowID)
+  LEFT JOIN Building AS b ON b.BuildingRowID = c.BuildingRowID)
+  LEFT JOIN Sample AS s ON s.SampleRowID = b.SampleRowID
+WHERE
+  c.OrganismCode = 1
+"
+
+
+all_chinook <- sqlQuery(channel, salmon_query) %>%
+  as_tibble() %>%
+  mutate(
+    datetime = paste(SampleDate, SampleTime),
+    SampleTime = lubridate::ymd_hms(datetime, tz = "America/Los_Angeles"),
+    facility = case_when(
+      BuildingCode == "NS" ~ "SWP",
+      BuildingCode == "OS" ~ "SWP",
+      BuildingCode == "F" ~ "CVP",
+      TRUE ~ "Unknown"
+    ),
+    yday = yday(SampleTime))
+
+
+
 # Close the ODBC connection
 odbcClose(channel)
+
+#now let's see how many genetic ID's we have
+
+all_chinook = mutate(all_chinook, Year = year(SampleTime))
+
+chinook_annual = group_by(all_chinook, Year, DNA_Run) %>%
+  summarize(N = n())
+
+ggplot(chinook_annual, aes(x = Year, y = N, fill = DNA_Run)) + geom_col()

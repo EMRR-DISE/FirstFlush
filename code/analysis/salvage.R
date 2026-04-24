@@ -182,6 +182,37 @@ ggplot(annual_salvage, aes(x = log(Exports), y = log(Count)))+ geom_point() +
 smelt = filter(annual_salvage, Taxa == "Hypomesus transpacificus")
 longfin = filter(annual_salvage, Taxa == "Spirinchus thaleichthys" )
 
+#annual salvage of smelt over time for amendment
+s0 = ggplot(smelt, aes(x = WY, y = Count)) + geom_col() + geom_text(aes(y = Count + 3000, label = round(Count))) +
+  ylab("Annual Delta Smelt Salvage (CVP+SWP)")+ theme_bw() + ggtitle("Delta Smelt Salvage (Total)")
+
+
+annual_salvage_SWP = df_salvage %>%
+  filter(Station != "CVP Federal Facility") %>%
+  mutate(Year = year(Date), Month = month(Date),
+         WY = case_when(Month %in% c(10,11,12) ~ Year+1, TRUE ~ Year),
+         CPUE = Count/Tow_volume,
+         CPUE = Count/Tow_volume) %>%
+  group_by(WY, Taxa) %>%
+  summarize(CPUE = sum(CPUE, na.rm =T), Count = sum(Count)) %>%
+  left_join(select(FirstStorms, Date, WY, SAC, YOLO, TotalFlow, Exports)) %>%
+  mutate(Month = month(Date), DOWY = case_when(Month %in% c(10,11,12) ~ yday(Date)-275, TRUE ~  yday(Date)+91),
+         regime = case_when(WY < 2008 ~ "pre-2008",
+                            WY >= 2008 ~ "post-2008"))
+
+smeltSWP = filter(annual_salvage_SWP, Taxa == "Hypomesus transpacificus")
+
+#annual salvage of smelt over time for amendment
+s1 = ggplot(smeltSWP, aes(x = WY, y = Count)) + geom_col() + geom_text(aes(y = Count + 3000, label = round(Count))) +
+  ylab("Annual Delta Smelt Salvage (SWP)") + theme_bw() + ggtitle("Delta Smelt Salvage (SWP only)")
+
+library(patchwork)
+s0/s1
+
+ggsave("plots/Smeltsalvage.png", width = 10, height =8)
+
+#statistics
+
 lm1 = lm(log(Count)~ log(TotalFlow)+ WY, data = smelt)
 summary(lm1)
 #nope
@@ -458,8 +489,13 @@ CVPsalvage = read_csv("data/raw/CVP_genetic_assignments-2011-2024.csv")
 #OK, a lot more data
 
 runID = bind_rows(swpsalvage, CVPsalvage)%>%
-  mutate(Date = date(SampleDateTime))
+  mutate(Date = date(SampleDateTime), Year = year(SampleDateTime))
 #that's 34699 rows
+
+runIDannual = group_by(runID, Genetic_Assignment, Year) %>%
+  summarize(N = n())
+
+ggplot(runIDannual, aes(x = Year, y = N, fill = Genetic_Assignment)) + geom_col()
 
 salsalvage = filter(df_salvage, Taxa == "Oncorhynchus tshawytscha", Count !=0, year(Date) >2010) %>%
   mutate(Facility = str_sub(Station, 1,3))
@@ -475,7 +511,8 @@ salsalvage_test = filter(salsalvage, !is.na(Genetic_Assignment))
 #ugh, what a mess
 
 #how many salmon have been salvaged?
-salsalvage_c = filter(df_salvage, Taxa == "Oncorhynchus tshawytscha", Count >0, year(Date) >2010)
+salsalvage_c = filter(df_salvage, Taxa == "Oncorhynchus tshawytscha", Count >0, year(Date) >2010) %>%
+  mutate(Year = year(Date))
 sum(salsalvage_c$Count)
 #190,650 - but that's expanded salvage
 
@@ -504,14 +541,24 @@ ggplot(runID2, aes(x = Exports, y = Count)) + geom_point()+geom_smooth(method = 
 
 #how many salmon were caught? ##########################
 
-foo = read_csv("data/raw/Salvage_2024.csv")
-salsalvage2 = filter(foo, `Scientific Name` == "Oncorhynchus tshawytscha",
-                     year(SampleDate) >2010)
-sum(salsalvage2$Count)
-#we caught 54,000 salmon over those years. We have IDs for 39000 individuals.
+sum(salsalvage_c$Count)
+#Expanded salvage 190650 salmon over those years. We have IDs for 39000 individuals.
+#wait, "count" is salvage. Length-frequency is probably one per fish. Huh.
+sum(runIDannual$N)
 
+runIDtotals = group_by(runIDannual, Year) %>%
+  summarize(Total = sum(N))
 
+runIDannual = left_join(runIDannual, runIDtotals) %>%
+  mutate(Percentage = N/Total)
 
+salsal_annual = group_by(salsalvage_c, Year) %>%
+  summarize(Count = sum(Count, na.rm =T)) %>%
+  left_join(select(runIDannual, Year, Genetic_Assignment, Percentage)) %>%
+              mutate(Salvaged_byrun = Count*Percentage)
+
+ggplot(salsal_annual, aes(x = Year, y = Salvaged_byrun))+ geom_col()+
+  facet_wrap(~Genetic_Assignment, scales = "free_y")
 
 #look at acumulation curves #############################################
 df_lamp = df_lamprey %>%
@@ -632,3 +679,51 @@ ggplot(filter(df_accum, Taxa == "Lamptera spp."), aes(x = DOWY, y =propsalv, col
   geom_vline(data = filter(Firststorms, WY>1992), aes(xintercept = DOWY, color = as.factor(WY)))+
   ggtitle("Lamprey")+
   facet_wrap(~WY)
+
+#look at smelt salvage from access ########################
+
+
+# Connect to Microsoft Access DB
+salvage_db <- "data/Salvage_data_FTP.accdb"
+channel <- odbcConnectAccess2007(salvage_db)
+
+smelt_query <- "
+SELECT
+  s.SampleDate,
+  s.SampleTime,
+  d.IDNumber,
+  l.ForkLength,
+  l.LengthFrequency,
+  b.BuildingCode,
+  c.OrganismCode,
+  c.Count
+FROM
+  (((Length l
+  LEFT JOIN DNAandCWTRun AS d ON l.LengthRowID = d.LengthRowID)
+  LEFT JOIN Catch AS c ON c.CatchRowID = l.CatchRowID)
+  LEFT JOIN Building AS b ON b.BuildingRowID = c.BuildingRowID)
+  LEFT JOIN Sample AS s ON s.SampleRowID = b.SampleRowID
+WHERE
+  c.OrganismCode = 26
+"
+
+
+
+smeltsl <- sqlQuery(channel, smelt_query) %>%
+  as_tibble() %>%
+  mutate(
+    datetime = paste(SampleDate, SampleTime),
+    SampleTime = lubridate::ymd_hms(datetime, tz = "America/Los_Angeles"),
+    facility = case_when(
+      BuildingCode == "NS" ~ "SWP",
+      BuildingCode == "OS" ~ "SWP",
+      BuildingCode == "F" ~ "CVP",
+      TRUE ~ "Unknown"
+    ),
+    yday = yday(SampleTime))
+
+
+
+# Close the ODBC connection
+odbcClose(channel)
+
