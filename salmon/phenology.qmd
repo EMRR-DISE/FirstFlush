@@ -667,7 +667,7 @@ pctl_days_wyt %>%
 #| warning: false
 #| results: false
 
-# run wy + wyt model with the centered variable, where wyt is ordered & monotonic
+# run wy + wyt model with the centered variable, where wyt is ordered & monotonic (hence 'mo(wyt)')
 m1.day10.wy.wyt <- 
   brm(data = pctl_days_wyt %>% 
         filter(wy <= 2024),
@@ -678,6 +678,18 @@ m1.day10.wy.wyt <-
 
 # save fitted model (this one w the wy centered)
 write_rds(m1.day10.wy.wyt, here("salmon/results/m1.day10.wy.wyt.rds"))
+
+# m1...forced a 0 intercept which may have been a mistake; here, change back to 1 (intercpet represents the average wd)
+m2.day10.wy.wyt <- 
+  brm(data = pctl_days_wyt %>% 
+        filter(wy <= 2024),
+      family = gaussian,
+      wd ~ 1 + wy_centered + mo(wyt), 
+      iter = 10000, warmup = 1000, chains = 4, cores = 4, 
+      seed = 42)
+
+# save fitted model (this one w the wy centered)
+write_rds(m2.day10.wy.wyt, here("salmon/results/m1.day10.wy.wyt.rds"))
 
 ```
 
@@ -733,6 +745,11 @@ predicted_wd <- data.frame(
 )
 
 predicted_wd
+
+summary(m2.day10.wy.wyt) # so there's NO monotonic effect of water year type!
+plot(m2.day10.wy.wyt)
+
+conditional_effects(m2.day10.wy.wyt)
 
 
 ```
