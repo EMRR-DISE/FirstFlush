@@ -13,7 +13,6 @@ The beach seine data, as downloaded from EDI and using their code, has some issu
 #| message: false
 #| warning: false
 
-library(tidyverse)
 library(janitor)
 library(here)
 library(chron)
@@ -21,6 +20,7 @@ library(gridExtra)
 library(sf)
 library(tigris)
 library(nhdplusTools)
+library(tidyverse)
 
 raw <- 
   read_rds(here("salmon/data/raw/dt3.rds")) %>% 
@@ -88,16 +88,12 @@ Regularize the time series, and identify the months for which each site was samp
 ```{r}
 #| label: effort
 
-# define and create a path for processed data
-path <- here("salmon/data/processed")
-dir.create(path)
-
 # create monthly coverage indicator and retain region
 # this is an irregular time series-no rows when sites weren't sampled
 coverage_irreg <- raw %>%
   distinct(
     station, year = year(date), month = month(date), region) %>%
-  # 'tag' months sampled
+  # 'tag' months sampled (thus far, all of them)
   mutate(sampled = 1)
 
 # create tibble of station and region for later use
@@ -208,8 +204,10 @@ coverage %>%
     axis.text.x = element_text(size = 7, angle = 90),
     axis.text.y = element_text(size = 7)
   )
-cen_delta <- c("DS002S", "GS010E", "LP003E", "MK004W", "SF014E", 
-               "SJ001S", "SJ005N", "TM001N", "XC001N")
+cen_delta <- c("DS002S", "GS010E", "LP003E", "MK004W", 
+               "SF014E", "SJ001S", 
+               "SJ005N", 
+               "TM001N", "XC001N")
 
 # South Delta effort
 coverage %>% 
@@ -257,7 +255,7 @@ coverage %>%
     axis.text.x = element_text(size = 7, angle = 90),
     axis.text.y = element_text(size = 7)
   )
-# none of these sites qualified for sufficient coverage
+# none of these sites qualified for sufficient coverage; good post 1998
 
 # San Joaquin River effort
 coverage %>% 
@@ -329,7 +327,8 @@ coverage %>%
     axis.text.x = element_text(size = 7, angle = 90),
     axis.text.y = element_text(size = 7)
   )
-l_sac <- c("SR071E", "SR080E", "SR090W", "SR094E", "SR138E")
+l_sac <- c("SR071E", "SR080E", "SR090W", "SR094E", 
+           "SR138E")
 
 
 ```
@@ -348,7 +347,8 @@ I basically eye-balled the figures above to select the following sites as judged
 sites <- 
   tibble(station = c(cen_delta, l_sac, n_delta, s_delta)) %>% 
   left_join(sta_reg, by = "station") %>% 
-  arrange(., region)
+  arrange(., region) %>% 
+  write_rds(., here("salmon/data/processed/sites.rds"))
 
 # what does effort look like by region?
 coverage %>% 
@@ -394,34 +394,7 @@ coverage %>%
   theme(legend.position = c(0.95, 0.13),
         legend.justification = c("right", "bottom"))
 
-##########
-# dump code below?
-##########
 
-# 'good' sites; includes some w good monthly coverage but missing early years
-good <- c("AM001S", "DS002S", "GS010E", "LP003E", "MK004W", "MR010W", "MS001N",
-          "OR003W", "OR014W", "OR019E", "0R023E",
-          "SA001M", "SA004W", "SA007E", "SA008W", "SA009E", "SA010W", "SF014E",
-          "SJ001S", "SJ005N", "SJ026S", "SJ032S", "SJ041N", "SJ051E", "SJ056E",
-          "SJ058W","SJ063W", "SJ074W", "SJ083W",
-          "SP000W", "SP001W", "SP003E",
-          # "SR012W", 
-          "SR014W", "SR017E", "SR024E", "SR043W", "SR049E", "SR060E",
-          "SR071E", "SR080E", "SR090W", "SR094E", "SR130E", "SR138E", "SR144W",
-          "SS011N", "TM001N", "WD002W", "XC001N")
-
-premier <- c(
-  # Lower Sac
-  "SR071E", "SR080E", "SR090W", "SR094E", "SR130E", "SR138E", "SR144W",
-  # N Delta
-  "AM001S", "MS001N", "SR014W", "SR017E", "SR024E", "SR043W", "SR049E", "SR060E", 
-  # Cen Delta
-  "DS002S", "GS010E", "LP003E", "MK004W", "SF014E", "SJ001S", "SJ005N", "TM001N", "XC001N"
-  # no premier sites in SJR or SF/SP Bays
-  )
-
-write_rds(good, here("salmon/data/processed/selected_site_codes.rds"))
-write_rds(premier, here("salmon/data/processed/premier.rds"))
 ```
 
 # map sites
@@ -431,12 +404,10 @@ The first flush working group has adopted specific regions to explore spatial va
 ```{r}
 #| label: map-sites
 
-
 # import Dave's regions shapefile
-sf_regions <- read_sf(here("data/processed/spatial/delta_regions.shp")) %>% clean_names()
-
-# retrieve DJFMP station metadata
-sample_sites <- read_rds(here("salmon/data/raw/dt5.rds"))
+sf_regions <- 
+  read_sf(here("data/processed/spatial/delta_regions.shp")) %>% 
+  clean_names()
 
 # create stations dataframe w lat lon
 stations <-
@@ -482,7 +453,7 @@ stations_sf %>%
   filter(ff_region %in% c("SAC", "SJR", "Bay")) %>% 
   select(station, region_label, ff_region)
 
-# map regions include sites outside ff region
+# map regions, including sites outside ff region
 ggplot() +
   geom_sf(data = sf_regions, fill = "grey95", color = "grey60") +
   geom_sf(

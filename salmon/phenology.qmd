@@ -22,7 +22,7 @@ One package *not* available on CRAN: If necessary, get it using `remotes::instal
 #| message: false
 
 # library(conflicted) # causes WAAAY more trouble than it solves!
-library(tidyverse)
+
 library(here)
 library(readxl)
 library(janitor) 
@@ -35,6 +35,8 @@ library(dataRetrieval)
 library(EflowStats)
 library(fishualize)
 library(tidybayes)
+library(tidyverse)
+
 ```
 
 # load data
@@ -43,7 +45,7 @@ library(tidybayes)
 #| label: seine-data
 #| echo: true
 
-# beach seine data
+# beach seine data ('raw' includes all spp)
 raw <- 
   read_rds(here("salmon/data/raw/raw.rds"))
 
@@ -84,7 +86,7 @@ storms <-
   arrange(WY) %>% 
   mutate(wyd = get_waterYearDay(Date))
 
-saveRDS(storms, here("salmon/data/processed/storms.rds"))
+write_rds(storms, here("salmon/data/processed/storms.rds"))
 
 ```
 
@@ -97,15 +99,15 @@ There are beach seine data from a large number of sites, but the consistency wit
 ```{r}
 #| label: limit-sites
 
-# list of beach seine station codes identified minimally adequate for 
-# temporal coverage
-good <- 
-  tibble(station = read_rds(here("salmon/data/processed/selected_site_codes.rds")))
+# list of beach seine stations identified minimally adequate for 
+# temporal coverage (tibble includes region and region_label)
+sites <- 
+  read_rds(here("salmon/data/processed/sites.rds"))
 
 # select data from those minimum effort sites and for complete water years (1976-10-01 onwards)
 dat <-
   raw %>% 
-  filter(station %in% good$station,
+  filter(station %in% sites$station,
          # limit to data collected during complete water years
          date >= "1976-10-01") %>% 
   mutate(year = year(date),
@@ -113,22 +115,11 @@ dat <-
   relocate(region, .after = id_code) %>% 
   relocate(year:month, .before = date)
 
-reg_labs <-
-  tibble(region = factor(1:6),
-         region_label = c("Lower Sac R", "N Delta", "Cen Delta", "S Delta",
-                          "Lower SJR", "SF & SP Bays"))
-
 # create monthly coverage indicator and retain region_code
 coverage <- dat %>%
   distinct(station, year, month, region) %>%
   # 'tag' months sampled
   mutate(sampled = 1)
-
-# create tibble of station_code and region_code for later use
-sta_reg <-
-  coverage %>%
-  distinct(station, region) %>% 
-  left_join(reg_labs, by = "region")
 
 ```
 
@@ -190,13 +181,16 @@ seine <-
     # sum counts if multiple matches
     values_fn = sum
   ) %>% 
-  dplyr::select(c(sample_id:water_temp, CHN))
+  dplyr::select(c(sample_id:water_temp, CHN)) %>% 
+  left_join(sites, by = "station") %>% 
+  dplyr::select(-region) %>% 
+  relocate(region_label, .after = location)
 
 ### daily counts -----
 # aggregate to daily totals bc freq >>1 seine per day
-# note that this will obscure potential differences among locations
 
-daily <-
+# aggregated across all selected sites
+daily_delta <-
   seine %>%
   group_by(wy, month, wd) %>%
   summarise(
@@ -204,100 +198,117 @@ daily <-
     .groups = "drop"
   )
 
+# aggregated by region
+daily_regional <-
+  seine %>% 
+  group_by(region_label, wy, month, wd) %>% 
+  summarise(
+    daily_total = sum(CHN, na.rm = TRUE),
+    .groups = "drop"
+  )
+
 ### cumulative percent------
-# calc cumulative percentage for each wy
-daily_cum <-
-  daily %>% 
-  group_by(wy) %>% 
-  arrange(wy, wd) %>% 
-  mutate(
-    annual_total = sum(daily_total),
-    cum_total = cumsum(daily_total),
-    cum_percent = 100 * cum_total / annual_total
-  ) %>% 
-  arrange(wy, month, wd) %>% 
-  ungroup()
-
-write_rds(daily_cum, here("salmon/data/processed/daily_cum.rds"))
-
-# calc cumulative percentage for each wy but limited to the period from Jan 1-Mar 31
-# Jan 1 is wd 93; Mar 31 is wd 182 (leap years, it's 183 but I'm going to ignore this)
-
-daily_cum_limited <-
-  daily %>% 
+# limited to the period from Jan 1-Mar 31
+# calc cumulative percentage for each wy during that 3-month period, delta-wide
+delta_cumul <-
+  daily_delta %>% 
   filter(month <= 3) %>% 
   group_by(wy) %>% 
   arrange(wy, wd) %>% 
   mutate(
     annual_total = sum(daily_total),
-    cum_total = cumsum(daily_total),
-    cum_percent = 100 * cum_total / annual_total
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
   ) %>% 
   arrange(wy, month, wd) %>% 
-  ungroup()
+  ungroup() %>% 
+  write_rds(., here("salmon/data/processed/delta_cumul.rds"))
 
-write_rds(daily_cum_limited, here("salmon/data/processed/daily_cum_limited.rds"))
+# cumulative totals and percentages for Jan-Mar by region
+regional_cumul <-
+  daily_regional %>% 
+  filter(month <= 3) %>% 
+  group_by(wy, region_label) %>% 
+  arrange(region_label, wy, wd) %>% 
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
+  ) %>% 
+  arrange(region_label, wy, month, wd) %>% 
+  ungroup() %>% 
+  write_rds(., here("salmon/data/processed/regional_cumul.rds"))
 
 ```
 
+Plot the accumulation curves.
+
 ```{r}
-#| label: accum-curves
+#| label: annual-accumulation
 #| message: false
 #| warning: false
 
-daily_cum %>% 
+# annual (whole year) accumulation curves, lumping data from all sites
+daily_delta %>% 
+  group_by(wy) %>% 
   arrange(wy, wd) %>% 
-ggplot(aes(x = wd,
-           y = cum_percent,
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
+  ) %>% 
+  arrange(wy, month, wd) %>% 
+  ggplot(aes(x = wd,
+           y = cumul_percent,
            group = wy,
            color = wy)) +         
   geom_line() +
-  # add 1977 on top in red
-  geom_line(data = subset(daily_cum, wy == 1977), 
-            color = "red", 
-            linewidth = 0.7) +
   xlim(0, 300) +
   geom_hline(yintercept = c(10, 50, 90),
              linetype = "dashed") +
   scale_color_viridis_c(option = "mako") +
   # highlight 1977 data
   annotate("text", x = 250, y = 30,
-           label = "1977 (N=13)", color = "red", fontface = "bold") +
+           label = "1977", color = "red", fontface = "bold") +
   labs(x = "Day of Water Year",
        y = "Cumulative % of Annual Total",
-       title = "Juvenile Chinook Accumulation Curves",
-       subtitle = "data from January - December, 1977-2024",
+       title = "Juvenile Chinook Delta-Wide Accumulation Curves",
+       subtitle = "data from 1977-2024",
        color = "water year") +
   theme_bw()
 
-ggsave(here("salmon/plots/accum_allmonths.png"))
+```
 
-# THIS is the approach that we prob want to use
-# limit the data to January - March: data = daily_cum_limited
-ggplot(daily_cum_limited,
-       aes(x = wd,
-           y = cum_percent,
-           group = wy,
-           color = wy)) +         
+```{r}
+#| label: 3month-accumulation
+
+
+regional_cumul %>% 
+  arrange(region_label, wy, wd) %>%
+  mutate(region_label = fct_relevel(region_label, 
+                                     "Lower Sac", "N Delta", 
+                                     "Cen Delta", "S Delta")) %>%
+  mutate(region_label = fct_recode(region_label,
+                                    "Lower Sacramento River" = "Lower Sac",
+                                    "North Delta"            = "N Delta",
+                                    "Central Delta"          = "Cen Delta",
+                                    "South Delta"            = "S Delta")) %>%
+  ggplot(aes(x = wd,
+             y = cumul_percent,
+             color = wy,
+             group = wy)) +
   geom_line() +
-  # add 1977 on top in red
-  geom_line(data = subset(daily_cum_limited, wy == 1977), 
-            color = "red", 
-            linewidth = 0.7) +
-  xlim(0, 300) +
+  xlim(50, 200) +
   geom_hline(yintercept = c(10, 50, 90),
              linetype = "dashed") +
   scale_color_viridis_c(option = "mako") +
-  annotate("text", x = 190, y = 30,
-           label = "1977 (N=13)", color = "red", fontface = "bold") +
   labs(x = "Day of Water Year",
-       y = "Cumulative % of Annual Total",
-       title = "Juvenile Chinook Accumulation Curves",
-       subtitle = "data from January - March only, 1977-2024",
-       color = "water year") +
+       y = "Cumulative % of 3-Month Total", 
+       title = "Juvenile Chinook Regional Accumulation Curves",
+       subtitle = "January - March, 1977-2024",
+       color = "Water Year") +
+  facet_wrap(~region_label, nrow = 2) +
   theme_bw()
-
-ggsave(here("salmon/plots/accum_jan2mar.png"))
 
 ```
 
@@ -471,6 +482,8 @@ m3.day10.wy <-
 ```{r}
 #| label: model-check1
  
+m3.day10.wy <- read_rds(here("salmon/results/m3.day10.wy.rds"))
+
 # run posterior predictive check
 pp_check(m3.day10.wy)
 
@@ -498,10 +511,13 @@ m3.day10.wy_robust <-
       seed = 42)
       
 write_rds(m3.day10.wy_robust, here("salmon/results/m3.day10.wy_robust.rds"))
+
 ```
 
 ```{r}
 #| label: model-check2
+
+m3.day10.wy_robust <- read_rds(here("salmon/results/m3.day10.wy_robust.rds"))
 
 # looks a bit better!
 pp_check(m3.day10.wy_robust)
@@ -919,7 +935,7 @@ first_flush %>%
   labs(
     title = "Time Elapsed from First Flush Event to the 10% Benchmark",
     x = "Water Year",
-    y = "Lag (water year days)",
+    y = "Lag (days)",
     color = "SAC flow"
   ) +
   theme_bw()
@@ -929,10 +945,13 @@ m1.day10.df <-
       family = gaussian,
       days_between ~ wy,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42)
+      seed = 42,
+      file = salmon/results/m1.day10.df.rds)
+
+m1.day10.df <- read_rds(here("salmon/results/m1.day10.df.rds"))
+
 print(m1.day10.df, digits = 4)
 plot(m1.day10.df)
-write_rds(m1.day10.df, here("salmon/results/m1.day10.df.rds"))
 
 # Is there a change in the SIZE of salmon over the years?
 # see 'salmon_sz.qmd'
