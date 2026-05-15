@@ -105,8 +105,11 @@ sta_reg <-
   left_join(
     tibble(
       region = factor(1:7),
-      region_label = factor(c("Lower Sac", "N Delta", "Cen Delta", "S Delta",
-                              "SJR", "SF & SP Bays", "Sac R"))
+      region_label = factor(c("Lower Sacramento River", "North Delta", 
+                              "Central Delta", "South Delta",
+                              "San Joaquin River", 
+                              "San Francisco & San Pablo Bays", 
+                              "Sacramento River"))
     ),
     by = "region"
   ) %>% 
@@ -126,16 +129,16 @@ coverage <-
         fill = list(sampled = 0)
     ) %>% 
   # add region code for unsampled station/year/months (lost w regularization)
-    rows_patch(sta_reg %>% select(station, region), by = "station") %>%
+    rows_patch(sta_reg %>% 
+                 dplyr::select(station, region), by = "station") %>%
   # add region_label
     left_join(sta_reg %>% distinct(region, region_label), by = "region") %>% 
     mutate(
       month_label = factor(month, levels = 1:12, labels = month.abb),
       region_label = fct_relevel(
-        region_label, "Sac R",
-        "Lower Sac", "N Delta", "Cen Delta",
-        "SJR", "S Delta", "SF & SP Bays"
-      )
+        region_label, "Sacramento River", "Lower Sacramento River", 
+        "North Delta", "Central Delta",
+        "San Joaquin River", "South Delta", "San Francisco & San Pablo Bays")
     ) %>% 
   write_rds(., here("salmon/data/processed/coverage.rds"))
 
@@ -159,7 +162,7 @@ Plot monthly coverage for all beach sites.
 
 # North Delta effort
 coverage %>% 
-  filter(region_label == "N Delta",
+  filter(region_label == "North Delta",
          year >= 1977) %>% 
   mutate(month_label = 
            factor(month, levels = 1:12, labels = month.abb)) %>% 
@@ -184,7 +187,7 @@ n_delta <- c("AM001S", "MS001N", "SR014W", "SR017E",
 
 # Central Delta effort
 coverage %>% 
-  filter(region_label == "Cen Delta",
+  filter(region_label == "Central Delta",
          year >= 1977) %>% 
   mutate(month_label = 
            factor(month, levels = 1:12, labels = month.abb)) %>% 
@@ -211,7 +214,7 @@ cen_delta <- c("DS002S", "GS010E", "LP003E", "MK004W",
 
 # South Delta effort
 coverage %>% 
-  filter(region_label == "S Delta",
+  filter(region_label == "South Delta",
          year >= 1977) %>% 
   mutate(month_label = 
            factor(month, levels = 1:12, labels = month.abb)) %>% 
@@ -235,7 +238,7 @@ s_delta <- c("MR010W", "SJ041N")
 
 # San Francisco & San Pablo bay effort
 coverage %>% 
-  filter(region_label == "SF & SP Bays",
+  filter(region_label == "San Francisco & San Pablo Bays",
          year >= 1977) %>% 
   mutate(month_label = 
            factor(month, levels = 1:12, labels = month.abb)) %>% 
@@ -259,7 +262,7 @@ coverage %>%
 
 # San Joaquin River effort
 coverage %>% 
-  filter(region_label == "SJR",
+  filter(region_label == "San Joaquin River",
          year >= 1977) %>% 
   mutate(month_label = 
            factor(month, levels = 1:12, labels = month.abb)) %>% 
@@ -283,7 +286,7 @@ coverage %>%
 
 # Sacramento River effort
 coverage %>% 
-  filter(region_label == "Sac R",
+  filter(region_label == "Sacramento River",
          year >= 1977) %>% 
   mutate(month_label = 
            factor(month, levels = 1:12, labels = month.abb)) %>% 
@@ -307,7 +310,7 @@ coverage %>%
 
 # Lower Sacramento River effort
 coverage %>% 
-  filter(region_label == "Lower Sac",
+  filter(region_label == "Lower Sacramento River",
          year >= 1977) %>% 
   mutate(month_label = 
            factor(month, levels = 1:12, labels = month.abb)) %>% 
@@ -373,7 +376,7 @@ coverage %>%
 # central delta (example)
 coverage %>% 
     filter(station %in% sites$station,
-           year >= 1977, region_label == "Cen Delta") %>% 
+           year >= 1977, region_label == "Central Delta") %>% 
     mutate(month_label = 
                factor(month, levels = 1:12, labels = month.abb)) %>% 
     ggplot(aes(month_label, year, 
@@ -419,7 +422,7 @@ stations <-
   mutate(lat = Latitude,
          lon = Longitude,
          .keep = "unused") %>% 
-  select(-MethodCode) %>% 
+  dplyr::select(-MethodCode) %>% 
   clean_names()
 
 # convert stations to an sf object
@@ -449,9 +452,13 @@ stations_sf <-
   )
     
 # check (no clue if these are actually correct!)
-stations_sf %>% 
+stations_sf <-
+  stations_sf %>% 
   filter(ff_region %in% c("SAC", "SJR", "Bay")) %>% 
-  select(station, region_label, ff_region)
+  dplyr::select(station, region_label, ff_region) %>% 
+  mutate(region_label = fct_relevel(region_label,
+                                    "Lower Sacramento River", "North Delta",
+                                    "Central Delta", "South Delta"))
 
 # map regions, including sites outside ff region
 ggplot() +
@@ -512,7 +519,7 @@ beach_seine_stations <-
   geom_sf(data = sf_regions, fill = "grey95", color = "grey60") +
   geom_sf(data = bay_water_filtered, fill = "lightsteelblue2", color = "steelblue3", linewidth = 0.3) +
   geom_sf(data = flowlines_filtered3, color = "steelblue4", linewidth = 0.4, alpha = 0.7) +
-  geom_sf(data = stations_sf, aes(color = region), size = 2) +
+  geom_sf(data = stations_sf, aes(color = region_label), size = 2) +
   # Place coord_sf LAST and define the CRS inside it
   coord_sf(
     xlim = c(-122.6, -121.2), 
@@ -527,7 +534,15 @@ beach_seine_stations <-
 ggsave("beach_seine_stations.png", 
        path = here("salmon/plots"),
        plot = beach_seine_stations, 
-       width = 8, height = 6, 
+       width = 8, height = 8, 
        dpi = 300)
+
+```
+
+To retrieve the saved .png file and view it in RStudio...
+
+```{r}
+library(magick)
+image_read(here("salmon/plots/beach_seine_stations.png"))
 
 ```
