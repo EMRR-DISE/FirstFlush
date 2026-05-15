@@ -77,6 +77,9 @@ Let's pull in Rosie's storm data including *first flush* events, both timing and
 
 ```{r}
 #| label: storm-data
+#| message: false
+#| warning: false
+
 
 load(here("data/processed/storms/StormData.RData"))
 
@@ -99,6 +102,9 @@ There are beach seine data from a large number of sites, but the consistency wit
 
 ```{r}
 #| label: limit-sites
+#| message: false
+#| warning: false
+
 
 # list of beach seine stations identified minimally adequate for 
 # temporal coverage (tibble includes region and region_label)
@@ -132,6 +138,9 @@ Add data on *water year types* to the data:
 
 ```{r}
 #| label: wy-wyd
+#| message: false
+#| warning: false
+
 
 # add variables: water year and day of water year
 # select data begining with WY 1976 
@@ -165,6 +174,9 @@ Calculate the accumulated number of salmon over the course of each water year an
 
 ```{r}
 #| label: counts
+#| message: false
+#| warning: false
+
 
 # daily counts
 # pivot to simplify summing Chinook counts (including 0's) for each sample unit
@@ -282,6 +294,9 @@ daily_delta %>%
 
 ```{r}
 #| label: 3month-accumulation
+#| message: false
+#| warning: false
+
 
 regional_cumul %>% 
   arrange(region_label, wy, wd) %>%
@@ -379,6 +394,9 @@ Add the water year type data (loaded previously) to the percentile data for anal
 
 ```{r}
 #| label: wy-type
+#| message: false
+#| warning: false
+
 
 ## year type ----
 # first, add water year type to the percentile_days df
@@ -422,6 +440,9 @@ Plot the water year days when each benchmark (10, 50, or 90%) is reach for each 
 
 ```{r}
 #| label: wy-effect
+#| message: false
+#| warning: false
+
 
 # quick data qaqc check (shouldn't be any NAs)
 unique(three_month_regional_benchmarks$region_label)
@@ -551,7 +572,6 @@ Testing for potential effects of water year (i.e., change over time), water year
 
 ```{r}
 #| label: bayes1
-#| results: false
 #| message: false
 #| warning: false
 
@@ -621,6 +641,9 @@ I ran the same model using a Students t-distribution (`bmod2`, below); based mos
 
 ```{r}
 #| label: robust
+#| message: false
+#| warning: false
+
 bmod2 <- 
   brm(data = three_month_regional_benchmarks %>% 
         rename(region = region_label),
@@ -644,6 +667,9 @@ Pull in Rosie's storm data and integrate that with the benchmark data from above
 
 ```{r}
 #| label: ff-data
+#| message: false
+#| warning: false
+
 
 storms <- 
   read_rds(here("salmon/data/processed/storms.rds")) %>% 
@@ -666,6 +692,9 @@ Let's see if there are any patterns by plotting some of these data.
 
 ```{r}
 #| label: plots
+#| message: false
+#| warning: false
+
 
 ff_data %>%
   ggplot(aes(wd)) +
@@ -712,7 +741,8 @@ ggsave(here("salmon/plots/first_flush_timing.png"))
 
 ```{r}
 #| label: ff-models
-
+#| message: false
+#| warning: false
 
 bmod3 <- 
   brm(data = ff_data,
@@ -746,5 +776,3 @@ plot(bmod4) # looks good
 conditional_effects(bmod4, "ff_wyd:percentile")
 
 ```
-
-SCRATCH below this
