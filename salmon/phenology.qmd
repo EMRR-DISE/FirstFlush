@@ -73,7 +73,7 @@ fish_codes <-
 
 ## storm data
 
-Let's pull in Rosie's storm data—I think this includes *first flush* events, both timing and magnitude.
+Let's pull in Rosie's storm data including *first flush* events, both timing and magnitude.
 
 ```{r}
 #| label: storm-data
@@ -84,6 +84,7 @@ load(here("data/processed/storms/StormData.RData"))
 storms <-
   Firststorms %>% 
   arrange(WY) %>% 
+  # wyd of first flush events for each wy
   mutate(wyd = get_waterYearDay(Date))
 
 write_rds(storms, here("salmon/data/processed/storms.rds"))
@@ -459,7 +460,7 @@ three_month_regional_benchmarks %>%
   labs(title = "Chinook Salmon Outmigration Timing",
        subtitle = "data from January - March only",
        x = "Water Year",
-       y = "10% of 3-Month Total Reached (day of water year")
+       y = "10% of 3-Month Total Reached (day of water year)")
 
 ggsave(here("salmon/plots/benchmark_10pct.png"))
 
@@ -497,7 +498,7 @@ three_month_regional_benchmarks %>%
   labs(title = "Chinook Salmon Outmigration Timing",
        subtitle = "data from January - March only",
        x = "Water Year",
-       y = "50% of 3-Month Total Reached (day of water year")
+       y = "50% of 3-Month Total Reached (day of water year)")
 
 ggsave(here("salmon/plots/benchmark_50pct.png"))
 
@@ -535,7 +536,7 @@ three_month_regional_benchmarks %>%
   labs(title = "Chinook Salmon Outmigration Timing",
        subtitle = "data from January - March only",
        x = "Water Year",
-       y = "90% of 3-Month Total Reached (day of water year")
+       y = "90% of 3-Month Total Reached (day of water year)")
 
 ggsave(here("salmon/plots/benchmark_90pct.png"))
 
@@ -594,9 +595,9 @@ All `Rhat = 1.00`, so the model converged cleanly. We have effective sample size
 
 - `wy_meanCentered` (-0.44, CI \[-0.65, -0.24\]): The day_10 benchmark is shifting earlier by about 0.44 days per year, and, over the roughly 50-year span of our time series, that's about a 20 day shift earlier in the year. The credible interval excludes 0, so this is a real and significant trend!
 
-- The percentile main effects (`percentileday_50` +21.76 and `percentileday_90` +44.74) are no surprise–the way that these are determined ensures that these follow the 10% benchmark day, but the magnitudes tell us how spread out the distribution is in a typical year.
+- The percentile main effects (`percentileday_50` +21.76 and `percentileday_90` +44.74) are no surprise–the way that these are determined ensures that these follow the 10% benchmark day, but the magnitudes tell us how spread out the distribution is in a typical year. In other words, on average, we can expect that 50% of the total annual outmigrating juveniles will reach the Central Delta about 22 days after the first 10% of the outmigrants.
 
-- Regional effects (baseline = Central Delta): The Lower Sacramento River is about 8 days earlier than the Central Delta, but benchmarks reached in the North and South Deltas are indistinguishable from that in the Central Delta (both CIs include zero). So, not surprisingly, fish reach the Lower Sacramento River sites first, and then the three Delta regions. (Still, it's comforting to see things work "the way they should.")
+- Regional effects (baseline = Central Delta): The Lower Sacramento River is reached by the juvenile salmon about 8 days prior to reaching the Central Delta, but benchmarks reached in the North and South Deltas are indistinguishable from that in the Central Delta (both CIs include zero). So, not surprisingly, fish reach the Lower Sacramento River sites first, and then the three Delta regions.
 
 - Percentile x year interactions:
 
@@ -604,9 +605,9 @@ All `Rhat = 1.00`, so the model converged cleanly. We have effective sample size
 
   - `wy_meanCentered:percentileday_90` = 0.13, CI \[0.12, -0.11\]
 
-- Both CIs cross zero so we can't say that these slopes are *different from* the day_10 slope; rather, the day_10 slope is credibly negative (-0.44, definitively earlier) and other slopes are indistinguishable from the first.
+  - Both CIs cross zero so we can't say that these slopes are *different from* the day_10 slope; rather, the day_10 slope is credibly negative (-0.44, definitively earlier) and other slopes for the other two benchmarks are indistinguishable from the first.
 
-- `mowyt` (-0.96, CI \[-1.77, -0.17\]): As you move from the driest (C) to wettest (W) water year types, `wd` decreases by about 1 day total. So, wet years reach the benchmarks very slightly earlier than dry years, holding everything else constant. This is a very (very) modest effect compared to the change over time (years) and the difference between river sites and Delta sites.
+- `mowyt` (-0.96, CI \[-1.77, -0.17\]): As you move from the driest (C) to wettest (W) water year types, `wd` decreases by about 1 day total. So, wet years reach the benchmarks very slightly earlier than dry years, holding everything else constant. This is a very modest effect compared to the change over time (years) and the difference between river sites and Delta sites, but it really does appear that there's an effect of water year type on migration timing.
 
 - `mowyt:wy_meanCentered` (+0.09, CI \[0.03, 0.03\]): Year type effects interact with year such that the gap between wet and dry years has been *narrowing* over time. While the effect size is small, it's credibly non-zero.
 
@@ -614,9 +615,9 @@ All `Rhat = 1.00`, so the model converged cleanly. We have effective sample size
 
 - `sigma` (14.62): Individual observations of `wd` vary by about 15 days around the model's prediction, after accounting for year, percentile (benchmark), region and water year type. Consider this the unexplained year-to-year and within-region variance.
 
-**Summary** The entire distribution of the wd benchmarks (10, 50th, 90th percentiles) is moving more than 0.4 days earlier each year, and the shift is statistically credible. The three benchmarks are shifting in parallel rather than diverging or converging. Fish arrive in the Lower Sacramento River about a week prior to their arrival in the Delta, and timing to reach sites within the Delta are indistinguishable from each other. Arrival times are slighly earlier during wet years than in dry years, but that gap has narrowed over time.
+**Summary** The entire distribution of the wd benchmarks (10th, 50th, 90th percentiles) is moving more than 0.4 days earlier each year, and the shift is statistically credible. The three benchmarks are shifting in parallel rather than diverging or converging. Fish arrive in the Lower Sacramento River about a week prior to their arrival in the Delta, and timing to reach sites within the Delta are indistinguishable from each other. Arrival times are slighly earlier during wet years than in dry years, but that gap has narrowed over time.
 
-I ran the same model using a Students t-distribution; based mostly on the prior posterior check, I don't see that there's a significant improvement over the original, `bmod1`.
+I ran the same model using a Students t-distribution (`bmod2`, below); based mostly on the prior posterior check, I don't see that there's a significant improvement over the original, `bmod1`.
 
 ```{r}
 #| label: robust
@@ -637,62 +638,18 @@ plot(bmod2) # looks good
 conditional_effects(bmod2, "wy_meanCentered:percentile") # doesn't add much
 ```
 
-### linear approach
-
-```{r}
-#| label: linear-models
-
-
-library(dplyr)
-library(tidyr)
-library(purrr)
-library(broom)
-
-models <- three_month_regional_benchmarks %>%
-  group_by(percentile) %>%
-  nest() %>%
-  mutate(
-    fit     = map(data, ~ lm(wd ~ wy_meanCentered + wyt + region_label, data = .x)),
-    coefs   = map(fit, tidy, conf.int = TRUE),
-    summary = map(fit, glance)
-  )
-
-# coefficient table across percentiles
-# note: wyt.L is the linear trend;
-# does wd go up or down with wyt from drier to wetter
-models %>% 
-  dplyr::select(percentile, coefs) %>% 
-  unnest(coefs)
-
-# model-level fit stats (R^2, AIC, etc.)
-models %>% 
-  dplyr::select(percentile, summary) %>% 
-  unnest(summary)
-
-```
-
-#### notes
-
-- `wyt.L` is the linear trend across the ordered levels — "as you move from drier to wetter years, does `wd` go steadily up or steadily down?" A positive coefficient means `wd` rises with wetness; negative means it falls. This is usually the one you care about most, and if it's the only significant term, the effect is essentially monotonic in wetness.
-
-- `wyt.Q` captures curvature — a U-shape or inverted-U. Positive means the middle categories (BN, AN) have *lower* `wd` than the extremes (C and W); negative means the middle is *higher* than the extremes. Significant `.Q` with non-significant `.L` would mean "extremes behave alike, middle is different."
-
-- `wyt.C` is an S-shape — `wd` rises then falls then rises (or vice versa) as you move through the ordering. Rarely interpretable on its own; significance here usually means the spacing between levels isn't smooth.
-
-- `wyt^4` is an even wigglier shape with three bends. Almost never substantively meaningful — if it's significant, it's usually a sign the ordered-factor assumption isn't quite right.
-
-Doesn't really add anything of value to the Bayesian models above.
-
 ### first flush effect
+
+Pull in Rosie's storm data and integrate that with the benchmark data from above.
 
 ```{r}
 #| label: ff-data
-
 
 storms <- 
   read_rds(here("salmon/data/processed/storms.rds")) %>% 
   mutate(ff_wyd = wyd,
          .keep = "unused")
+
 # no first flush storms for 1977, 2020, 2022 and 2025--filter(is.na(WY))
 
 ff_data <- 
@@ -703,24 +660,27 @@ ff_data <-
   dplyr::select(wy, wy_meanCentered, ff_wyd, percentile, wd, SAC, region = region_label) %>% 
   filter(!is.na(ff_wyd))
 
-
 ```
 
-Let's see if there are any patterns.
+Let's see if there are any patterns by plotting some of these data.
 
 ```{r}
 #| label: plots
-
 
 ff_data %>%
   ggplot(aes(wd)) +
   geom_histogram(bins = 30) +
   facet_wrap(~ percentile, scales = "free")
+# looks good; skew doesn't appear excessive
 
 ff_data %>% 
   ggplot(aes(x = wy, y = ff_wyd)) +
   geom_point() +
   geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "Day of First Flush",
+       subtitle = "1978 - 2024",
+       x = "Water Year",
+       y = "Day of First Flush (day of water year)") +
   theme_bw()
 
 # this is kinda crazy! water ops?
@@ -730,6 +690,23 @@ ff_data %>%
   ggplot(aes(x = wy, y = wd, color = percentile)) +
   geom_point() +
   theme_bw()
+# plotted multiple ways above
+
+ff_data %>% 
+  ggplot(aes(x = ff_wyd, y = wd, color = percentile)) +
+  geom_point(size = 4) +
+  # fish colors!
+  scale_color_fish(discrete = TRUE,
+                   option = "Oncorhynchus_tshawytscha",
+                   alpha = 0.6) +
+  geom_smooth(method = "lm") +
+  labs(title = "First Flush and Chinook Outmigration Timing",
+       subtitle = "outmigration during Jan - Mar only",
+       x = "First Flush Timing (day of water year)",
+       y = "% Accumulation Benchmark (day of water year)") +
+  theme_bw()
+
+ggsave(here("salmon/plots/first_flush_timing.png"))
 
 ```
 
