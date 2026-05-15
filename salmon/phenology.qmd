@@ -762,7 +762,7 @@ conditional_effects(bmod3, "ff_wyd:percentile") # nice showing how ff matters mo
 
 bmod4 <- 
   brm(data = ff_data,
-      # within yr obs may not be independent?
+      # within yr obs may not be independent; this may help
       wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + (1 | wy),
       family = gaussian,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
@@ -776,3 +776,67 @@ plot(bmod4) # looks good
 conditional_effects(bmod4, "ff_wyd:percentile")
 
 ```
+
+Compare model performance.
+
+```{r}
+
+models <- list(bmod1 = bmod1, bmod2 = bmod2, bmod3 = bmod3, bmod4 = bmod4)
+
+# fit loo for each
+loos <- map(models, loo)
+
+# summary table of k diagnostics per model
+k_summary <- imap_dfr(loos, ~{
+  k <- .x$diagnostics$pareto_k
+  tibble(
+    model     = .y,
+    n_obs     = length(k),
+    k_max     = max(k),
+    n_ok      = sum(k <= 0.5),
+    n_okish   = sum(k > 0.5 & k <= 0.7),
+    n_bad     = sum(k > 0.7 & k <= 1.0),
+    n_veryBad = sum(k > 1.0)
+  )
+})
+print(k_summary)
+
+# detailed table of every observation with k > 0.7
+bad_points <- imap_dfr(loos, ~{
+  k <- .x$diagnostics$pareto_k
+  idx <- which(k > 0.7)
+  tibble(model = .y, obs = idx, pareto_k = k[idx])
+}) |>
+  arrange(desc(pareto_k))
+
+if (nrow(bad_points) == 0) {
+  message("All Pareto k values <= 0.7 across all models.")
+} else {
+  message("Observations with Pareto k > 0.7:")
+  print(bad_points)
+}
+
+```
+
+```{r}
+loo_compare(loos$bmod1, loos$bmod2, loos$bmod3, loos$bmod4)
+# can't compare all four directly for obvious reasons...
+
+loo_compare(loos[c("bmod1", "bmod2")])
+loo_compare(loos[c("bmod3", "bmod4")])
+
+```
+
+Models `bmod2` and `bmod4` outperform their respective alternatives.
+
+## next steps
+
+Can I look at this for WR only? Include other LAD-based run designations?
+
+Need to consider finer spatial scales: what do accumulation curves for individual sites look like?
+
+What about including the whole year and limiting the time series to post-1992 (or thereabouts)?
+
+Surely there is an applicable metric for the magnitude of a first flush event. Include that in one of these models!
+
+What about other salmon data sources (eg trawls from Chipps Island)? What about other fish species?
