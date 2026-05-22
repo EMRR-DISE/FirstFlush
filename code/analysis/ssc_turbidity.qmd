@@ -1,0 +1,530 @@
+---
+title: "SSC and Turbidity Relationship"
+author: "Dave Bosworth"
+date: today
+date-format: long
+format:
+  html:
+    toc: true
+    toc-expand: true
+    code-fold: show
+    code-tools: true
+execute:
+  message: false
+  warning: false
+---
+
+```{r}
+# Load packages
+library(tidyverse)
+library(scales)
+library(patchwork)
+library(performance)
+library(tsibble)
+library(labelled)
+library(here)
+library(conflicted)
+
+# Declare package conflict preferences
+conflicts_prefer(dplyr::filter(), dplyr::lag())
+```
+
+# Purpose
+
+Explore relationship between daily suspended sediment concentrations (SSC) and daily average turbidity values collected at the Sacramento River at Freeport (FPT) and San Joaquin River near Vernalis (SJR) stations. If appropriate, we'll use the long-term record of SSC values to predict daily average turbidity values to lengthen the period of record.
+
+# Import and Prepare Data
+
+```{r}
+# Define file path for processed data
+fp_proc_data <- here("data/processed")
+
+# Daily suspended sediment and turbidity data
+df_ssc <- readRDS(file.path(fp_proc_data, "wq/ssc_dv.rds"))
+df_turb <- readRDS(file.path(fp_proc_data, "wq/turbidity_dv.rds"))
+
+# Clean up SSC and Turbidity data sets
+ls_ssc <- df_ssc |>
+  mutate(
+    station_abbr = if_else(station_abbr == "SJR_USGS", "SJR", station_abbr)
+  ) |>
+  set_variable_labels(date = "Date", ssc = "SSC (mg/L)") |>
+  (\(x) split(x, x$station_abbr))()
+
+ls_turb <- df_turb |>
+  select(-turbidity_median) |>
+  mutate(
+    station_abbr = if_else(station_abbr == "SJR_DWR", "SJR", station_abbr)
+  ) |>
+  filter(station_abbr %in% c("FPT", "SJR")) |>
+  set_variable_labels(
+    date = "Date",
+    turbidity_mean = "Daily Average Turbidity (FNU)"
+  ) |>
+  (\(x) split(x, x$station_abbr))()
+
+# Storm data set
+load(file.path(fp_proc_data, "storms/StormData.RData"))
+
+# Clean up Sacflow_wstorms data set
+df_sac_storm <- Sacflow_wstorms %>%
+  mutate(
+    storm_cat = case_when(
+      FirstStorm == "First Storm" ~ "First Storm",
+      YSStorm == "STORM" ~ "Storm, but not first",
+      Month %in% c(1, 2, 12) ~ "No Storm, during winter",
+      .default = "No Storm, not during winter"
+    ),
+    storm_cat = factor(
+      storm_cat,
+      levels = c(
+        "First Storm",
+        "Storm, but not first",
+        "No Storm, during winter",
+        "No Storm, not during winter"
+      )
+    )
+  ) %>%
+  select(WY, Date, Month, ys_storm = YSStorm, storm_cat) |>
+  rename_with(tolower) |>
+  set_variable_labels(storm_cat = "Storm Category")
+
+# Combine storm data set with suspended sediment and turbidity data
+ls_ssc_turb <-
+  map2(
+    ls_ssc,
+    ls_turb,
+    \(x, y) {
+      full_join(x, y, by = join_by(station_abbr, date)) |>
+        full_join(df_sac_storm, by = join_by(date)) |>
+        drop_na(ssc, turbidity_mean) |>
+        arrange(date)
+    }
+  )
+```
+
+# Visualize time series
+
+## Sacramento River at Freeport
+
+### Suspended Sediment Concentration
+
+```{r}
+ls_ssc$FPT %>%
+  ggplot(aes(x = date, y = ssc)) +
+  geom_point() +
+  scale_x_date(breaks = breaks_pretty(15)) +
+  scale_y_continuous(labels = label_comma()) +
+  theme_bw() +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Suspended Sediment Concentration"
+  )
+```
+
+### Turbidity
+
+```{r}
+ls_turb$FPT %>%
+  ggplot(aes(x = date, y = turbidity_mean)) +
+  geom_point() +
+  scale_x_date(breaks = breaks_pretty(10)) +
+  theme_bw() +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "Daily Average Turbidity"
+  )
+```
+
+## San Joaquin River near Vernalis
+
+### Suspended Sediment Concentration
+
+```{r}
+ls_ssc$SJR %>%
+  ggplot(aes(x = date, y = ssc)) +
+  geom_point() +
+  scale_x_date(breaks = breaks_pretty(15)) +
+  scale_y_continuous(labels = label_comma()) +
+  theme_bw() +
+  labs(
+    title = "San Joaquin River near Vernalis",
+    subtitle = "Suspended Sediment Concentration"
+  )
+```
+
+### Turbidity
+
+```{r}
+ls_turb$SJR %>%
+  ggplot(aes(x = date, y = turbidity_mean)) +
+  geom_point() +
+  scale_x_date(breaks = breaks_pretty(10)) +
+  theme_bw() +
+  labs(
+    title = "San Joaquin River near Vernalis",
+    subtitle = "Daily Average Turbidity"
+  )
+```
+
+# Relationship between SSC and Turbidity
+
+## Sacramento River at Freeport
+
+Start with the raw values:
+
+```{r}
+ls_ssc_turb$FPT %>%
+  ggplot(aes(x = ssc, y = turbidity_mean)) +
+  geom_point(alpha = 0.5) +
+  theme_bw() +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "SSC vs. Daily Average Turbidity, Original values"
+  )
+```
+
+Try log-log transformation:
+
+```{r}
+ls_ssc_turb$FPT %>%
+  ggplot(aes(x = log(ssc), y = log(turbidity_mean))) +
+  geom_point(alpha = 0.5) +
+  theme_bw() +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "SSC vs. Daily Average Turbidity, Log-transformed values"
+  )
+```
+
+### Initial Model
+
+The relationship between SSC and Turbidity looks much clearer with the log-transformed data. Here is a simple linear model predicting Turbidity with SSC.
+
+```{r}
+df_ssc_turb_fpt <- ls_ssc_turb$FPT |>
+  mutate(across(c(ssc, turbidity_mean), list(log = log)))
+
+lm_ssc_turb_fpt <- lm(turbidity_mean_log ~ ssc_log, data = df_ssc_turb_fpt)
+summary(lm_ssc_turb_fpt)
+```
+
+Model diagnostics:
+
+```{r}
+#| fig-height: 9
+#| fig-width: 8
+check_model(lm_ssc_turb_fpt)
+```
+
+```{r}
+check_heteroscedasticity(lm_ssc_turb_fpt)
+shapiro.test(residuals(lm_ssc_turb_fpt))
+check_normality(lm_ssc_turb_fpt)
+```
+
+```{r}
+acf(residuals(lm_ssc_turb_fpt))
+Box.test(residuals(lm_ssc_turb_fpt), lag = 20, type = "Ljung-Box")
+check_autocorrelation(lm_ssc_turb_fpt)
+```
+
+The Shapiro-Wilk normality test shows that the residuals aren't normal, and the Ljung-Box test indicates that the residuals are autocorrelated. Let's try to improve the predictive power of the model by running a series of models adding 1 through 3 lag terms and compare how well they correct for autocorrelation.
+
+```{r}
+df_ssc_turb_fpt_lag <- df_ssc_turb_fpt |>
+  mutate(
+    ssc_log_lag1 = lag(ssc_log),
+    ssc_log_lag2 = lag(ssc_log, 2),
+    ssc_log_lag3 = lag(ssc_log, 3)
+  )
+```
+
+### Lag 1 Model
+
+```{r}
+lm_ssc_turb_fpt_lag1 <- df_ssc_turb_fpt_lag |>
+  drop_na(ssc_log_lag1) |>
+  lm(turbidity_mean_log ~ ssc_log + ssc_log_lag1, data = _)
+
+acf(residuals(lm_ssc_turb_fpt_lag1))
+Box.test(residuals(lm_ssc_turb_fpt_lag1), lag = 20, type = "Ljung-Box")
+```
+
+### Lag 2 Model
+
+```{r}
+lm_ssc_turb_fpt_lag2 <- df_ssc_turb_fpt_lag |>
+  drop_na(ssc_log_lag1, ssc_log_lag2) |>
+  lm(turbidity_mean_log ~ ssc_log + ssc_log_lag1 + ssc_log_lag2, data = _)
+
+acf(residuals(lm_ssc_turb_fpt_lag2))
+Box.test(residuals(lm_ssc_turb_fpt_lag2), lag = 20, type = "Ljung-Box")
+```
+
+### Lag 3 Model
+
+```{r}
+lm_ssc_turb_fpt_lag3 <- df_ssc_turb_fpt_lag |>
+  drop_na() |>
+  lm(
+    turbidity_mean_log ~ ssc_log + ssc_log_lag1 + ssc_log_lag2 + ssc_log_lag3,
+    data = _
+  )
+
+acf(residuals(lm_ssc_turb_fpt_lag3))
+Box.test(residuals(lm_ssc_turb_fpt_lag3), lag = 20, type = "Ljung-Box")
+```
+
+### ARIMA Model
+
+Adding up to 3 lag terms to the model appeared to do little to fix the serial autocorrelation. We'll assess the possibility of using an ARIMA model, which requires a complete time series.
+
+```{r}
+df_ssc_turb_fpt |>
+  as_tsibble(index = date) |>
+  fill_gaps() |>
+  filter(is.na(ssc_log))
+```
+
+There are 161 days with missing data in the time series. For now, we will use the simple linear model with log-transformed data to predict Turbidity from SSC despite the issues with non-normality and serial autocorrelation of the residuals. This is okay since we are only using the model for predictions, not to produce prediction intervals or for hypothesis testing.
+
+### Observed vs. Predicted
+
+Plot the observed Turbidity values vs. the back-transformed model predictions (fitted values) to see how they compare and to check model performance.
+
+```{r}
+df_ssc_turb_fpt_mod <- df_ssc_turb_fpt |>
+  mutate(
+    fitted_vals = fitted(lm_ssc_turb_fpt),
+    fitted_vals_bt = exp(fitted_vals)
+  )
+
+plt_obs_pred_fpt <- df_ssc_turb_fpt_mod |>
+  ggplot(aes(x = turbidity_mean, y = fitted_vals_bt)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  labs(
+    title = "Observed vs. Predicted",
+    subtitle = "All data",
+    x = "Observed",
+    y = "Predicted"
+  ) +
+  theme_bw()
+
+plt_obs_pred_fpt
+```
+
+Many of the predicted values from the model are lower than their associated observed values. This is most likely because we used a log-transformed response variable. In this case, back-transforming the model predictions provides the geometric mean or median when tends to underestimate the mean. We can try using the Smearing Estimator bias correction method to adjust the model predictions.
+
+```{r}
+#| fig-width: 8
+df_ssc_turb_fpt_mod2 <- df_ssc_turb_fpt_mod |>
+  mutate(
+    fitted_vals_bt_adj = fitted_vals_bt * mean(exp(residuals(lm_ssc_turb_fpt)))
+  )
+
+plt_obs_pred_fpt_adj <- df_ssc_turb_fpt_mod2 |>
+  ggplot(aes(x = turbidity_mean, y = fitted_vals_bt_adj)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  labs(
+    title = "Observed vs. Predicted and Adjusted",
+    subtitle = "All data",
+    x = "Observed",
+    y = "Predicted & Adjusted"
+  ) +
+  theme_bw() +
+  ylim(c(0, 175))
+
+(plt_obs_pred_fpt + ylim(c(0, 175))) + plt_obs_pred_fpt_adj
+```
+
+This provides a slight improvement in the model predictions, but not much.
+
+### Just Winter-Early Spring
+
+What if we restrict the data to the months when storms are most prevalent in our model since this is the time period we are most interested in for our analyses.
+
+```{r}
+df_sac_storm |>
+  filter(ys_storm == "STORM") |>
+  count(month)
+```
+
+It looks like storms are most common during December - April, so we'll use that time period.
+
+```{r}
+df_ssc_turb_fpt_wint <- df_ssc_turb_fpt |> filter(month %in% c(1:4, 12))
+```
+
+```{r}
+df_ssc_turb_fpt_wint %>%
+  ggplot(aes(x = log(ssc), y = log(turbidity_mean))) +
+  geom_point(alpha = 0.5) +
+  theme_bw() +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(
+    title = "Sacramento River at Freeport",
+    subtitle = "SSC vs. Daily Average Turbidity, Log-transformed values, December - April"
+  )
+```
+
+Here is a simple linear model predicting Turbidity with SSC for December - April data:
+
+```{r}
+lm_ssc_turb_fpt_wint <- lm(
+  turbidity_mean_log ~ ssc_log,
+  data = df_ssc_turb_fpt_wint
+)
+summary(lm_ssc_turb_fpt_wint)
+```
+
+Model diagnostics:
+
+```{r}
+#| fig-height: 9
+#| fig-width: 8
+check_model(lm_ssc_turb_fpt_wint)
+```
+
+```{r}
+check_heteroscedasticity(lm_ssc_turb_fpt_wint)
+shapiro.test(residuals(lm_ssc_turb_fpt_wint))
+check_normality(lm_ssc_turb_fpt_wint)
+```
+
+```{r}
+acf(residuals(lm_ssc_turb_fpt_wint))
+Box.test(residuals(lm_ssc_turb_fpt_wint), lag = 20, type = "Ljung-Box")
+check_autocorrelation(lm_ssc_turb_fpt_wint)
+```
+
+This model still suffers the same issues with non-normality and serial autocorrelation of the residuals. However, we'll plot the observed Turbidity values vs. the back-transformed model predictions (fitted values) to see how they compare and to check model performance.
+
+```{r}
+df_ssc_turb_fpt_wint_mod <- df_ssc_turb_fpt_wint |>
+  mutate(
+    fitted_vals = fitted(lm_ssc_turb_fpt_wint),
+    fitted_vals_bt = exp(fitted_vals)
+  )
+
+plt_obs_pred_fpt_wint <- df_ssc_turb_fpt_wint_mod |>
+  ggplot(aes(x = turbidity_mean, y = fitted_vals_bt)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  labs(
+    title = "Observed vs. Predicted",
+    subtitle = "December - April",
+    x = "Observed",
+    y = "Predicted"
+  ) +
+  theme_bw()
+
+plt_obs_pred_fpt_wint
+```
+
+Again, we'll try using the Smearing Estimator bias correction method to adjust the model predictions.
+
+```{r}
+#| fig-width: 8
+df_ssc_turb_fpt_wint_mod2 <- df_ssc_turb_fpt_wint_mod |>
+  mutate(
+    fitted_vals_bt_adj = fitted_vals_bt *
+      mean(exp(residuals(lm_ssc_turb_fpt_wint)))
+  )
+
+plt_obs_pred_fpt_wint_adj <- df_ssc_turb_fpt_wint_mod2 |>
+  ggplot(aes(x = turbidity_mean, y = fitted_vals_bt_adj)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  labs(
+    title = "Observed vs. Predicted and Adjusted",
+    subtitle = "December - April",
+    x = "Observed",
+    y = "Predicted & Adjusted"
+  ) +
+  theme_bw() +
+  ylim(c(0, 225))
+
+(plt_obs_pred_fpt_wint + ylim(c(0, 225))) + plt_obs_pred_fpt_wint_adj
+(plt_obs_pred_fpt_adj + ylim(c(0, 225))) + plt_obs_pred_fpt_wint_adj
+```
+
+This seems to be slightly better than the model using all data, but not by much.
+
+### Specific Question from Brian S
+
+In response to a specific question from Brian S, predict the change in suspended sediment needed to go from a Turbidity of 180 FNU to 20 FNU
+
+```{r}
+# Reverse regression relationship
+lm_turb_ssc_fpt <- lm(ssc_log ~ turbidity_mean_log, data = df_ssc_turb_fpt)
+summary(lm_turb_ssc_fpt)
+
+df_new_data <- tibble(turbidity_mean_log = log(c(20, 180)))
+ls_new_data_conf <- predict(
+  lm_turb_ssc_fpt,
+  df_new_data,
+  se.fit = TRUE,
+  interval = "confidence"
+)
+
+ls_new_data_pred <- predict(
+  lm_turb_ssc_fpt,
+  df_new_data,
+  se.fit = TRUE,
+  interval = "prediction"
+)
+
+df_new_data_c <-
+  bind_cols(
+    df_new_data,
+    as_tibble(ls_new_data_conf$fit),
+    as_tibble_col(ls_new_data_pred$se.fit, column_name = "se")
+  ) %>%
+  rename(
+    ssc_fit = fit,
+    conf95_lower = lwr,
+    conf95_upper = upr
+  ) %>%
+  bind_cols(as_tibble(ls_new_data_pred$fit)) %>%
+  select(-fit) %>%
+  rename(pred95_lower = lwr, pred95_upper = upr) %>%
+  relocate(se, .after = last_col()) %>%
+  mutate(across(everything(), exp))
+
+df_new_data_c
+```
+
+## San Joaquin River near Vernalis
+
+Start with the raw values:
+
+```{r}
+ls_ssc_turb$SJR %>%
+  ggplot(aes(x = ssc, y = turbidity_mean)) +
+  geom_point(alpha = 0.5) +
+  theme_bw() +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(
+    title = "San Joaquin River near Vernalis",
+    subtitle = "SSC vs. Daily Average Turbidity, Original values"
+  )
+```
+
+Try log-log transformation:
+
+```{r}
+ls_ssc_turb$SJR %>%
+  ggplot(aes(x = log(ssc), y = log(turbidity_mean))) +
+  geom_point(alpha = 0.5) +
+  theme_bw() +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(
+    title = "San Joaquin River near Vernalis",
+    subtitle = "SSC vs. Daily Average Turbidity, Log-transformed values"
+  )
+```

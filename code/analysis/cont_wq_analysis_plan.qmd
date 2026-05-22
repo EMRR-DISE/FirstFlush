@@ -381,9 +381,10 @@ sf_stations_c3 %>%
     a. Turbidity maxima after the onset of each storm
     b. Days between first day of storm and turbidity maxima (could help define time lags at downstream stations)
     c. Temporal rate of increase or raw difference (~1 week before storm vs. during storm at its peak)
-    c. Spatial extent of turbidity increase (maybe use representative stations in each region to identify whether it increased in that area). Summarize this in some useful way.
-    d. Gradient calculations between SR and SJR influenced stations
-    e. Compare before (~1 week before storm) to during/after (~1 week after storm) for each storm grouped by region
+    d. Spatial extent of turbidity increase (maybe use representative stations in each region to identify whether it increased in that area). Summarize this in some useful way.
+    e. Gradient calculations between SR and SJR influenced stations
+    f. Compare before (~1 week before storm) to during/after (~1 week after storm) for each storm grouped by region
+    g. Some metrics to look at duration of elevated turbidity events in relation to storm events
 2. Salinity
     a. Compare before (~1 week before storm) to during/after (~1 week after storm) for each storm grouped by region
 3. Dissolved Oxygen
