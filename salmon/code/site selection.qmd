@@ -346,10 +346,14 @@ I basically eye-balled the figures above to select the following sites as judged
 # 'eye-balled' the figures to identify the 'good' sites, those with better
 # annual and seasonal coverage (some still sparse or late start/early end):
 
+# here are all the DJFMP sites w RKM
+stations_with_rkm <-
+  read_rds(here("salmon/data/processed/stations_with_rkm.rds"))
+
 # this is a pretty conservative selection
 sites <- 
   tibble(station = c(cen_delta, l_sac, n_delta, s_delta)) %>% 
-  left_join(sta_reg, by = "station") %>% 
+  left_join(stations_with_rkm, by = "station") %>% 
   arrange(., region) %>% 
   write_rds(., here("salmon/data/processed/sites.rds"))
 
@@ -451,11 +455,11 @@ stations_sf <-
            )
   )
     
-# check (no clue if these are actually correct!)
+# filter regions to retain first flush priorities
 stations_sf <-
   stations_sf %>% 
   filter(ff_region %in% c("SAC", "SJR", "Bay")) %>% 
-  dplyr::select(station, region_label, ff_region) %>% 
+  dplyr::select(station, region_label, location, ff_region) %>% 
   mutate(region_label = fct_relevel(region_label,
                                     "Lower Sacramento River", "North Delta",
                                     "Central Delta", "South Delta"))
@@ -506,8 +510,9 @@ bbox <- st_bbox(
   crs = st_crs(4326)
 ) %>% st_as_sfc()
 
-# get NHD flowlines within the area
+# get NHD flowlines within the area, save!
 flowlines <- get_nhdplus(AOI = bbox, realization = "flowline")
+write_rds(flowlines, here("salmon/data/processed/flowlines"))
 
 # filter to meaningful streams (avoids tiny ditches cluttering the map)
 flowlines_filtered3 <- flowlines %>%
@@ -536,6 +541,63 @@ ggsave("beach_seine_stations.png",
        plot = beach_seine_stations, 
        width = 8, height = 8, 
        dpi = 300)
+
+
+
+```
+
+Add station labels and city anchors using ggrepel
+
+```{r}
+library(ggrepel)
+
+# reference cities for geographic context
+
+cities <- data.frame(
+  name = c("Colusa", "Sacramento", "Rio Vista", "Stockton", "Benicia", "San Francisco"),
+  lon = c(-122.0094, -121.4789, -121.6926, -121.2908, -122.1539, -122.4194),
+  lat = c(39.2143, 38.5758, 38.1606, 37.9577, 38.0521, 37.7749)
+)
+
+# had "Knights Landing" -121.7183, 38.7996 but there's a KL station
+
+cities_sf <- st_as_sf(cities, coords = c("lon", "lat"), crs = 4326)
+
+# build combined labels dataframe
+station_labels <- stations %>%
+  select(label = location, lon, lat) %>%
+  mutate(type = "station")
+
+city_labels <- cities %>%
+  select(label = name, lon, lat) %>%
+  mutate(type = "city")
+
+all_labels <- bind_rows(station_labels, city_labels)
+
+beach_seine_stations <-
+  ggplot() +
+  geom_sf(data = sf_regions, fill = "grey95", color = "grey60") +
+  geom_sf(data = bay_water_filtered, fill = "lightsteelblue2",
+          color = "steelblue3", linewidth = 0.3) +
+  geom_sf(data = flowlines_filtered3, color = "steelblue4",
+          linewidth = 0.4, alpha = 0.7) +
+  geom_sf(data = stations_sf, aes(color = region_label), size = 2) +
+  geom_label_repel(
+    data = all_labels,
+    aes(x = lon, y = lat, label = label,
+        size = ifelse(type == "city", 3, 2.5),
+        fontface = ifelse(type == "city", "bold.italic", "plain")),
+    label.padding = unit(0.15, "lines"),
+    max.overlaps = 25, min.segment.length = 0.2,
+    box.padding = 0.4, force = 2
+  ) +
+  scale_size_identity() +
+  coord_sf(xlim = c(-122.55, -121.2), ylim = c(37.75, 39.3),
+           crs = st_crs(4326), default_crs = st_crs(4326), expand = FALSE) +
+  labs(title = "Selected Beach Seine Stations", color = "Region") +
+  theme_bw()
+
+ggsave(here("salmon/plots/beach_seine_stations.png"))
 
 ```
 

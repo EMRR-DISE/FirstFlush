@@ -35,6 +35,7 @@ library(dataRetrieval)
 library(EflowStats)
 library(fishualize)
 library(tidybayes)
+library(nlme)
 library(tidyverse)
 
 ```
@@ -162,7 +163,8 @@ dat <-
   group_by(date, time, station) %>% 
   mutate(sample_id = cur_group_id()) %>% 
   ungroup() %>% 
-  relocate(sample_id)
+  relocate(sample_id) %>% 
+  write_rds(., here("salmon/data/raw/dat.rds"))
 
 ```
 
@@ -196,8 +198,9 @@ seine <-
   ) %>% 
   dplyr::select(c(sample_id:water_temp, CHN)) %>% 
   left_join(sites, by = "station") %>% 
-  dplyr::select(-region) %>% 
-  relocate(region_label, .after = location)
+  mutate(location = location.x, .keep = "unused") %>% 
+  dplyr::select(-c(region, location.y, method_code)) %>% 
+  relocate(c(region_label, location, river_km), .after = station)
 
 ### daily counts -----
 # aggregate to daily totals bc freq >>1 seine per day
@@ -251,6 +254,26 @@ regional_cumul <-
   arrange(region_label, wy, month, wd) %>% 
   ungroup() %>% 
   write_rds(., here("salmon/data/processed/regional_cumul.rds"))
+
+# cumulative totals and percentages for Jan-Mar by station
+station_cumul <-
+  seine %>% 
+  group_by(station, wy, month, wd, river_km) %>% 
+  summarise(
+    daily_total = sum(CHN, na.rm = TRUE),
+    .groups = "drop"
+  ) %>% 
+  filter(month <= 3) %>% 
+  group_by(wy, station) %>% 
+  arrange(station, wy, wd) %>% 
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
+  ) %>% 
+  arrange(station, wy, month, wd) %>% 
+  ungroup() %>% 
+  write_rds(., here("salmon/data/processed/station_cumul.rds"))
 
 ```
 
@@ -322,6 +345,32 @@ regional_cumul %>%
 
 ```
 
+```{r}
+#| label: sta-accumul
+
+station_cumul %>% 
+  filter(!is.nan(cumul_percent)) %>% 
+  arrange(station, wy, wd, river_km) %>%
+  mutate(station = as.factor(station)) %>% 
+  ggplot(aes(x = wd,
+             y = cumul_percent,
+             color = river_km,
+             # group = wy
+             )) +
+  geom_line() +
+  xlim(50, 200) +
+  geom_hline(yintercept = c(10, 50, 90),
+             linetype = "dashed") +
+  scale_color_viridis_c(option = "mako") +
+  labs(x = "Day of Water Year",
+       y = "Cumulative % of 3-Month Total", 
+       title = "Juvenile Chinook Accumulation Curves by Station",
+       subtitle = "January - March, 1977-2024",
+       color = "River KM") +
+  theme_bw()
+
+```
+
 ## benchmarks
 
 Determine the day of each water year when 10%, 50% and 90% of the total annual numbers are reached.
@@ -375,6 +424,21 @@ three_month_regional_benchmarks <-
   regional_cumul %>% 
   arrange(region_label, wy, wd) %>% 
   group_by(region_label, wy) %>% 
+  summarise(
+    day_10 = min(wd[cumul_percent >= 10]),
+    day_50 = min(wd[cumul_percent >= 50]),
+    day_90 = min(wd[cumul_percent >= 90]),
+    .groups = "drop"
+  ) %>% 
+  pivot_longer(cols = c(day_10, day_50, day_90), 
+               names_to = "percentile", 
+               values_to = "wd") %>% 
+  mutate(percentile = factor(percentile))
+
+three_month_station_benchmarks <-
+  station_cumul %>% 
+  arrange(station, wy, wd) %>% 
+  group_by(station, wy) %>% 
   summarise(
     day_10 = min(wd[cumul_percent >= 10]),
     day_50 = min(wd[cumul_percent >= 50]),
@@ -579,8 +643,8 @@ Testing for potential effects of water year (i.e., change over time), water year
 # output_dir <- here("salmon", "results")
 # if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-# I've used a Gaussian distribution (at least for now) because the distributions for each
-# benchmark look "normalish." See
+# I've used a Gaussian distribution (at least for now) because the distributions 
+# for each benchmark look "normalish." See
 three_month_regional_benchmarks %>%
   ggplot(aes(wd)) +
   geom_histogram(bins = 30) +
@@ -605,47 +669,15 @@ bmod1 <-
 pp_check(bmod1) # looks good!
 (bmod1_sum <- summary(bmod1)) # see analysis
 plot(bmod1) # looks good
-conditional_effects(bmod1, "wy_meanCentered:percentile") # doesn't add much
+conditional_effects(bmod1, "wy_meanCentered:percentile") # plot doesn't add much
 
 ```
 
 All `Rhat = 1.00`, so the model converged cleanly. We have effective sample sizes in the low thousands and `n = 507`, so we can take the estimates seriously.
 
-- `Intercept` (125.59, CI \[122.13, 128.89\]): This is the expected outmigration timing (expressed as `wd`, numerical day of the water year) when all predictors are at their reference states. Over the entire time series, in the Central Delta, the day_10 benchmark is reached roughly on `wd = 126` or about February 2.
+Without going into the output details here (I will with the best model), the entire distribution of the `wd` benchmarks (10th, 50th, 90th percentiles) is moving more than 0.4 days earlier each year, and the shift is statistically credible. The three benchmarks are shifting in parallel rather than diverging or converging. Fish arrive in the Lower Sacramento River about a week prior to their arrival in the Delta, and timing to reach sites within the Delta are indistinguishable from each other. Arrival times are slightly earlier during wet years than in dry years, but that gap has narrowed over time. However, water year hydrology is genuinely heavy-tailed — ENSO events and atmospheric rivers can produce years that are extreme outliers relative to the typical range (see the accumulation curves for 1977 above for example), and I don't want those years unduly affecting my coefficient estimates. A Gaussian model will try harder to accommodate outliers by distorting the fitted mean, whereas a Students t-distribution is more robust to these extreme values and less likely to overfit the model.
 
-- `wy_meanCentered` (-0.44, CI \[-0.65, -0.24\]): The day_10 benchmark has been reached earlier by about 0.44 days per year; over the roughly 50-year span of our time series, that's about a 20 day shift earlier in the year. The credible interval excludes 0, so this is a real trend.
-
-- The percentile main effects (`percentileday_50` +21.76 and `percentileday_90` +44.74) are no surprise–the way that these are calculated ensures that these come later than the 10% benchmark day, but the magnitudes tell us how spread out the distribution is in a typical year. In other words, on average, we can expect that 50% of the total annual outmigrating juveniles will reach the Central Delta about 22 days after the first 10% of the outmigrants.
-
-- Regional effects (baseline = Central Delta): The Lower Sacramento River is reached by the juvenile salmon about 8 days before they reach the Central Delta further downstream, but benchmarks reached in the North and South Deltas are indistinguishable from that in the Central Delta (both CIs include zero). So, not surprisingly, fish reach the Lower Sacramento River sites first, and then the three Delta regions.
-
-- Percentile x year interactions:
-
-  - `wy_meanCentered:percentileday_50` = -0.09, CI \[0.12, -0.32\]
-
-  - `wy_meanCentered:percentileday_90` = 0.13, CI \[0.12, -0.11\]
-
-  - Both CIs cross zero so we can't say that these slopes are *different from* the day_10 slope; rather, the day_10 slope is credibly negative (-0.44, definitively earlier) and the slope for the other two benchmarks are indistinguishable from the first.
-
-- `mowyt` (-0.96, CI \[-1.77, -0.17\]): As you move from the driest (C) to wettest (W) water year types, `wd` decreases by about 1 day total. So, wet years reach the benchmarks very slightly earlier than dry years, holding everything else constant. This is a very modest effect compared to the change over time (years) and the difference between river sites and Delta sites, but it really does appear that there's an effect of water year type on migration timing.
-
-- `mowyt:wy_meanCentered` (+0.09, CI \[0.03, 0.03\]): Year type effects interact with year such that the gap between wet and dry years has been *narrowing* over time. While the effect size is small, it's credibly non-zero. The positive interaction means the negative `wyt` effect on `wd` becomes slightly less negative as year increases — the timing difference between wet and dry years is shrinking over time. Are regional *warming* trends, the result of climate change, reducing the importance of water availability?
-
-- Monotonic simplex parameters: The monotonic effect among year types is distributed very evenly, so no single step (e.g., BN to AN) dominates, and the assumption of monotonicity is reasonable. The fact that no single step dominates (or fails to have an effect) suggests that for juvenile salmon these are reasonable categories for a variable that does impact migration timing. The same logic applies to the `mowyt:wy_meanCentered` simplex parameters — they distribute the +0.09 interaction effect across the same transitions. The actual effect at each step is
-
-  - Critical → Dry: –0.96 × 0.23 = **–0.22 days**
-
-  - Dry → Below Normal: –0.96 × 0.27 = **–0.26 days**
-
-  - Below Normal → Above Normal: –0.96 × 0.25 = **–0.24 days**
-
-  - Above Normal → Wet: –0.96 × 0.26 = **–0.25 days**
-
-- `sigma` (14.62): Individual observations of `wd` vary by about 15 days around the model's prediction, after accounting for year, percentile (benchmark), region and water year type. Consider this the unexplained year-to-year and within-region variance.
-
-**Summary** The entire distribution of the wd benchmarks (10th, 50th, 90th percentiles) is moving more than 0.4 days earlier each year, and the shift is statistically credible. The three benchmarks are shifting in parallel rather than diverging or converging. Fish arrive in the Lower Sacramento River about a week prior to their arrival in the Delta, and timing to reach sites within the Delta are indistinguishable from each other. Arrival times are slighly earlier during wet years than in dry years, but that gap has narrowed over time.
-
-I ran the same model using a Students t-distribution (`bmod2`, below); based mostly on the prior posterior check, I don't see that there's a significant improvement over the original, `bmod1`.
+I ran the same model using a Students t-distribution (`bmod2`, below):
 
 ```{r}
 #| label: robust
@@ -670,6 +702,8 @@ conditional_effects(bmod2, "wy_meanCentered:percentile") # doesn't add much
 
 ```
 
+This a real improvement over `bmod1` with the `nu` estimate \<10. I compare these two models directly later in this report, but first let's start looking at the possible effects of first flush events.
+
 ### first flush effect
 
 Pull in Rosie's storm data and integrate that with the benchmark data from above.
@@ -692,7 +726,7 @@ ff_data <-
   left_join(storms,
             join_by(wy == WY),
             keep = FALSE) %>% 
-  dplyr::select(wy, wy_meanCentered, ff_wyd, percentile, wd, SAC, region = region_label) %>% 
+  dplyr::select(wy, wy_meanCentered, wyt, ff_wyd, percentile, wd, SAC, region = region_label) %>% 
   filter(!is.na(ff_wyd))
 
 ```
@@ -712,25 +746,6 @@ ff_data %>%
 # looks good; skew doesn't appear excessive
 
 ff_data %>% 
-  ggplot(aes(x = wy, y = ff_wyd)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = TRUE) +
-  labs(title = "Day of First Flush",
-       subtitle = "1978 - 2024",
-       x = "Water Year",
-       y = "Day of First Flush (day of water year)") +
-  theme_bw()
-
-# this is kinda crazy! water ops?
-summary(lm(data = ff_data, ff_wyd ~ wy))
-
-ff_data %>% 
-  ggplot(aes(x = wy, y = wd, color = percentile)) +
-  geom_point() +
-  theme_bw()
-# plotted multiple ways above
-
-ff_data %>% 
   ggplot(aes(x = ff_wyd, y = wd, color = percentile)) +
   geom_point(size = 4) +
   # fish colors!
@@ -748,7 +763,58 @@ ggsave(here("salmon/plots/first_flush_timing.png"))
 
 ```
 
-Now the question is, does the timing of first flush events affect the timing of juvenile salmon outmigration? I expect that *when* we get that first flush will affect the timing for that 10% benchmark, but that the effect will be reduced or absent with regard to reaching the 50 and 90% benchmarks.
+### first flush timing
+
+The migration data look cool, but first, does the timing of first flush events change over time? Plotting the timing and then a simple linear regression suggests that first flush events have come later over this time period.
+
+```{r}
+#| label: ff-timing
+
+
+# does the timing of the ff events change over time?
+ff_data %>% 
+  filter(percentile == "day_10", region == "Central Delta") %>% 
+  ggplot(aes(x = wy, y = ff_wyd)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "Day of First Flush",
+       subtitle = "1978 - 2024",
+       x = "Water Year",
+       y = "Day of First Flush (day of water year)") +
+  theme_bw()
+
+lm_ff_annual <-
+  lm(data = ff_data %>% 
+       # ensure we aren't pseudo-replicating
+       filter(percentile == "day_10", region == "Central Delta"), 
+     ff_wyd ~ wy)
+
+summary(lm_ff_annual) # no. there's a slope but way noisy
+
+# evidence of autocorrelation?
+acf(residuals(lm_ff_annual))
+# nope
+
+# what's the potential role of water year type here, given that it's almost
+# certainly correlated with the timing of first flush events?
+lm_ff_wyt <- lm(
+  data = ff_data %>% 
+    filter(percentile == "day_10", region == "Central Delta"),
+  ff_wyd ~ wy + wyt
+)
+summary(lm_ff_wyt)
+
+# let's compare these models
+AIC(lm_ff_annual, lm_ff_wyt)
+anova(lm_ff_annual, lm_ff_wyt)
+
+```
+
+The plot suggested that *maybe* these events were happening later over time, but the regression analysis shows that, while there is an effect of water year *type* on the timing of first flush, there's insufficient evidence to suggest that there's been a change over time. The improvement to the model with the addition of `wyt` is modest (p=0.056), but seems real to me.
+
+### first flush effects on migration timing
+
+Now the question is, does the timing of first flush events affect the timing of juvenile salmon outmigration, as the figure relating migration timing to the timing of first flush events above suggests? I expect that *when* we get that first flush will affect the timing for that 10% benchmark, but that the effect will be reduced or absent with regard to reaching the 50 and 90% benchmarks. Note that we don't have juvenile salmon accumulation data from South Delta for years 1989, 1991, 1993, 1997, 2009, 2010, 2012-2016, 2018, 2019, 2022, and 2023.
 
 ```{r}
 #| label: ff-models
@@ -760,66 +826,151 @@ bmod3 <-
       # 1st interaction lets slope of wd differ across benchmarks
       # I expect that day_10 will track ff closely but day_90 not so much
       wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered,
-      family = gaussian,
+      # student-t helped in bmod2, so
+      family = student,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
       seed = 42,
       file = here("salmon/results/bmod3"),
       file_refit = "on_change")
 
 pp_check(bmod3) # looks good!
-(bmod3_sum <- summary(bmod3)) # see analysis
+(bmod3_sum <- summary(bmod3)) # nu=7.21; student distribution is helping
 plot(bmod3) # looks good
-conditional_effects(bmod3, "ff_wyd:percentile") # nice showing how ff matters more early
+conditional_effects(bmod3, "ff_wyd:percentile") # ff matters more early in migr
 
 bmod4 <- 
   brm(data = ff_data,
       # within yr obs may not be independent; this may help
       wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + (1 | wy),
-      family = gaussian,
+      family = student,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
       seed = 42,
       file = here("salmon/results/bmod4"),
       file_refit = "on_change")
 
 pp_check(bmod4) # looks good!
-(bmod4_sum <- summary(bmod4)) # see analysis
+(bmod4_sum <- summary(bmod4)) # regional effects emerge more clearly
 plot(bmod4) # looks good
-conditional_effects(bmod4, "ff_wyd:percentile")
+conditional_effects(bmod4, "ff_wyd:percentile") # dividing the migration into
+# early, mid and late allows us to see there's a real effect of the ff timing
+# albeit primarily on those first, early migrants
+
+# define some priors based earlier model output
+my_priors <- c(
+  prior(normal(150, 50), class = Intercept),
+  prior(normal(0, 1), class = b, coef = ff_wyd),
+  prior(normal(0, 1), class = b, coef = "ff_wyd:percentileday_50"),
+  prior(normal(0, 1), class = b, coef = "ff_wyd:percentileday_90"),
+  prior(normal(0, 2), class = b, coef = wy_meanCentered),
+  prior(normal(0, 30), class = b), # now only hits percentile & region contrasts
+  prior(normal(0, 20), class = sd),
+  prior(exponential(1), class = sigma),
+  prior(gamma(2, 0.1), class = nu)
+)
+
+bmod5 <- brm(
+  data = ff_data,
+  wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + (1 | wy),
+  family = student,
+  prior = my_priors,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  seed = 42,
+  file = here("salmon/results/bmod5"),
+  file_refit = "on_change"
+)
+
+pp_check(bmod5) # looks GREAT
+pp_check(bmod5, type = "stat", stat = "mean")
+(bmod5_sum <- summary(bmod5)) # what's going on w S Delta? SJR fish?!
+plot(bmod5) # looks good
+conditional_effects(bmod5, "ff_wyd:percentile")
 
 ```
 
-The diagnostics look clean again — all Rhat = 1.00, ESS well above 1000. How should we understand these results?
+The diagnostics look clean again — all `Rhat` = 1.00, ESS well above 1000, and `nu` well below 10. The results look really good, but I think we should add water year type to the model to see if overall water year conditions affect migration timing. This could, for example, affect the tail end of the migration (`day_90`) while having little or no effect on the first 10%.
 
-**Intercept (104.93):**
+```{r}
+#| label: ff+wyt
 
-- `Intercept` (104.93, CI \[98.43-111.77\]): This is the expected `wd` for the 10th percentile benchmark in the reference region (Central Delta) at the mean year when `ff_wyd` = 0. Since day 0 of the water year isn't meaningful biologically, treat this more as a mathematical anchor than an interpretable quantity.
+# we're going to have to revise the priors though:
+get_prior(
+  wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + mo(wyt) + (1 | wy),
+  data = ff_data,
+  family = student
+) # this is mostly to ensure that I'm using the right terms
 
-- Day of the first flush (`ff_wyd`; 0.19, CI \[0.13-0.26\]): Credibly positive — each day later that first flush occurs, the 10th percentile outmigration benchmark shifts \~0.19 days later. First flush timing matters: a pulse that comes a month late pushes early migrants roughly 5–6 days later.
+my_priors_bmod6 <- c(
+  prior(normal(150, 50), class = Intercept),
+  prior(normal(0, 1), class = b, coef = ff_wyd),
+  prior(normal(0, 1), class = b, coef = "ff_wyd:percentileday_50"),
+  prior(normal(0, 1), class = b, coef = "ff_wyd:percentileday_90"),
+  prior(normal(0, 2), class = b, coef = wy_meanCentered),
+  prior(normal(0, 30), class = b, coef = mowyt),
+  prior(normal(0, 30), class = b), # percentile & region contrasts
+  prior(normal(0, 20), class = sd),
+  prior(exponential(1), class = sigma),
+  prior(gamma(2, 0.1), class = nu),
+  prior(dirichlet(1), class = simo, coef = mowyt1)
+)
+
+bmod6 <- brm(
+  data = ff_data,
+  # note addition of the monotonic wyt
+  wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + mo(wyt) + (1 | wy),
+  # sample_prior = "only", # run pp_check(bmod6); if ok run without
+  family = student,
+  prior = my_priors_bmod6,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  seed = 42,
+  file = here("salmon/results/bmod6"),
+  file_refit = "on_change"
+)
+
+pp_check(bmod6)
+pp_check(bmod6, type = "stat", stat = "mean")
+(bmod6_sum <- summary(bmod6)) # what's going on w S Delta? SJR fish?!
+plot(bmod6) # looks good
+conditional_effects(bmod6, "ff_wyd:percentile")
+
+bmod5 <- add_criterion(bmod5, "loo")
+bmod6 <- add_criterion(bmod6, "loo")
+loo_compare(bmod5, bmod6)
+
+```
+
+The model including water year type (`bmod6`) showed negligible improvement in predictive accuracy over the simpler model, `bmod5`, (Δelpd = –0.3 ± 0.2), and the water year type coefficient was not credibly different from zero, so we should go with the more parsimonious `bmod5`.
+
+Here's a detailed review of the bmod5 output:
+
+- `Intercept` (101.26, CI \[93.36-109.29\]): This is the expected `wd` for the 10th percentile benchmark in the reference region (Central Delta) at the mean year when `ff_wyd` = 0. Since day 0 of the water year isn't meaningful biologically, treat this more as a mathematical anchor than an interpretable quantity.
+
+- Day of the first flush (`ff_wyd`; 0.21, CI \[0.13-0.29\]): Credibly positive — each day later that first flush occurs, the 10th percentile outmigration benchmark shifts \~0.21 days later. First flush timing matters: a pulse that comes a month late pushes early migrants roughly 6 days later.
 
 - Interactions between first flush timing and the benchmarks:
 
-  - 10th percentile: **+0.19** (the main effect)
+  - 10th percentile: **+0.21** (the main effect)
 
-  - 50th percentile: 0.19 – 0.14 = **+0.05** (barely a relationship)
+  - 50th percentile: 0.21 – 0.15 = **+0.06** (barely a relationship)
 
-  - 90th percentile: 0.19 – 0.19 = **\~0.00** (no relationship)
+  - 90th percentile: 0.21 – 0.23 = **-0.02** (negligible)
 
-- The timing of first flush events clearly impacts when the first juvenile migrants reach the Delta. Presumably other factors (water temperature, cumulative flow conditions, individual variation) determine when the bulk of the outmigrants get there.
+- The timing of first flush events clearly affects when the first juvenile migrants reach the Delta. Presumably other factors (water temperature, cumulative flow conditions, individual variation) determine when the bulk of the outmigrants get there.
 
-- Regional effects (region) are comparable to results from the first model. The lower Sacramento is about 8 days earlier than the reference region; the others are indistinguishable.
+- Regional effects (`region`) are comparable to results from the first models. The lower Sacramento is about 8 days earlier than the reference region; fish reach the North Delta a little more than 2 days before the Central Delta. Timing for the South Delta can't be distinguished from the reference region. The latter result could be due to missing data for a large number of years, the effect of San Joaquin river fish entering the Delta independently, or both.
 
-- Change over time (`wy_meanCentered`; -0.25, CI \[-0.35--0.15\]): While there is still a credible temporal trend towards earlier migration, this is a smaller effect than what we saw in the first model, `bmod1`, -0.44. In other words, that temporal trend in the first model was actually mediated by changes in first flush timing over the years and the residual -0.25 is what is left after accounting for first flush timing.
+- Change over time (`wy_meanCentered`; -0.30, CI \[-0.47--0.12\]): There is a credible temporal trend towards earlier migration.
 
-- sigma (13.67): Marginally smaller than bmod1 (14.62); confirms that first flush timing adds modest but real explanatory power.
+- sigma (8.56): Smaller than `bmod1` (14.62); confirms that first flush timing adds real explanatory power.
 
-- Bottom line: first flush timing is a credible predictor of *early* outmigration (10th percentile) but not of bulk or late outmigration, as we hypothesized. If our goal is to understand what drives timing across the entire season, `ff_wyd` is most relevant for characterizing the vanguard of the run.
+- Bottom line: There has been a shift in the timing of salmon outmigration over this 45 year period, with the first 10% of each year's cohort now reaching the Delta nearly two weeks earlier than the late 1970's. First flush timing is also a credible predictor of *early* outmigration (10th percentile) but not of bulk or late outmigration, as we hypothesized. Outmigration phenology appears to be changing over the long term (decades), but is also strongly affected by year-to-year differences.
 
 Compare model performance.
 
 ```{r}
 #| label: pareto-k
 
-models <- list(bmod1 = bmod1, bmod2 = bmod2, bmod3 = bmod3, bmod4 = bmod4)
+models <- 
+  list(bmod1 = bmod1, bmod2 = bmod2, bmod3 = bmod3, bmod4 = bmod4, bmod5 = bmod5, bmod6 = bmod6)
 
 # fit loo for each
 loos <- map(models, loo)
@@ -864,41 +1015,62 @@ if (nrow(bad_points) == 0) {
 # can't compare all four directly bc unequal sample sizes
 
 loo_compare(loos[c("bmod1", "bmod2")])
-loo_compare(loos[c("bmod3", "bmod4")])
+loo_compare(loos[c("bmod3", "bmod4", "bmod5", "bmod6")])
 
 ```
 
-Models `bmod2` and `bmod4` outperform their respective alternatives.
+Models `bmod2` and `bmod5` outperform their respective alternatives.
 
 ### interpretation
 
-While output from the two models designed to study the importance of first flush timing on migration phenology are similar, `mbod4` outperformed `bmod3` so let's work through the output for `mbod4`. The diagnostics look clean again — all Rhat = 1.00, ESS well above 1000. How should we understand these results?
+While output from the two models designed to study the importance of first flush timing on migration phenology are similar, `mbod5` outperformed `bmod3` and `bmod4` so let's work through the output for `mbod4`. The diagnostics look clean again — all Rhat = 1.00, ESS well above 1000. How should we understand these results?
 
-- `Intercept` (104.19, CI \[95.60-112.73\]): This is the expected `wd` for the 10th percentile benchmark in the reference region (Central Delta) at the mean year when `ff_wyd` = 0. Since day 0 of the water year isn't meaningful biologically, treat this more as a mathematical anchor than an interpretable quantity.
+- `Intercept` (101.26, CI \[93.36-109.29\]): This is the expected `wd` for the 10th percentile benchmark in the reference region (Central Delta) at the mean year when `ff_wyd` = 0. Since day 0 of the water year isn't meaningful biologically, treat this more as a mathematical anchor than an interpretable quantity.
 
-- Day of the first flush (`ff_wyd`; 0.20, CI \[0.12-0.29\]): Credibly positive — each day later that first flush occurs, the 10th percentile outmigration benchmark shifts \~0.20 days later. First flush timing matters: a pulse that comes a month late pushes early migrants 6 days later.
+- Day of the first flush (`ff_wyd`; 0.21, CI \[0.13-0.29\]): Credibly positive — each day later that first flush occurs, the 10th percentile outmigration benchmark shifts \~0.21 days later. First flush timing matters: a pulse that comes a month late pushes early migrants about 6 days later.
 
 - Interactions between first flush timing and the benchmarks:
 
-  - 10th percentile: **+0.20** (the main effect)
+  - 10th percentile: **+0.21** (the main effect)
 
-  - 50th percentile: 0.20 – 0.14 = **+0.06** (barely a relationship)
+  - 50th percentile: 0.21 – 0.15 = **+0.06** (barely a relationship)
 
-  - 90th percentile: 0.20 – 0.19 = **+0.01** (no relationship)
+  - 90th percentile: 0.21 – -0.23 = **-0.02** (even less of a relationship)
 
 - The timing of first flush (`ff_wyd`) events clearly impacts when the first juvenile migrants (`percentileday_10`) reach the Delta. Presumably other factors (water temperature, cumulative flow conditions, individual variation) determine when the bulk of the outmigrants get there (`percentileday_50` and `percentileday_90`).
 
-- Regional effects (region) are comparable to results from the first model. As expected, the lower Sacramento, the region furthest upstream is about 8 days earlier than the reference region (Central Delta); the others are indistinguishable.
+- Regional effects (region) are comparable to results from the earlier models. As expected, salmon reach the upstream regions (lower Sacramento and North Delta) before reaching the Central Delta by about 8 days for the Lower Sacramento and by about 2.5 days for the North Delta. Timing at the South Delta cannot be distinguished from the Central Delta.
 
-- Change over time (`wy_meanCentered`; -0.26, CI \[-0.44--0.08\]): While there is still a credible temporal trend towards earlier migration, this is a smaller effect than what we saw in the first model, `bmod1`, -0.44. In other words, that temporal trend in the first model was actually mediated by changes in first flush timing over the years and the residual -0.26 is what is left after accounting for first flush timing.
+- Change over time (`wy_meanCentered`; -0.30, CI \[-0.47--0.12\]): There is a credible temporal trend towards earlier migration, although it's modified by the timing of first flush events.
 
-- `sigma` (12.12): Marginally smaller than bmod1 (14.62); confirms that first flush timing adds modest but real explanatory power.
+- `sigma` (8.56): Confirms that first flush timing adds modest but real explanatory power.
 
 - Bottom line: First flush timing is a credible predictor of *early* outmigration (10th percentile) but not of bulk or late outmigration, as we hypothesized. If our goal is to understand what drives timing across the entire season, `ff_wyd` is most relevant for characterizing the vanguard of the run.
+
+### priors
+
+Initially, I accepted the default priors that `brms` employs. These weren't bad – 'flat' for all except for the `intercepts` and for `sigma` where it uses `student_t`, but the tuning done for `bmod5` really improved the model outcome.\
+
+```{r}
+#| label: priors
+#| echo: false
+
+# if you want to see the details...
+prior_summary(bmod1)
+prior_summary(bmod2)
+prior_summary(bmod3)
+prior_summary(bmod4)
+prior_summary(bmod5)
+
+```
 
 ## next steps
 
 Can I look at this for WR only? Include other LAD-based run designations?
+
+Try the mixed effects modeling approach that Jereme recommended.
+
+What happens if I limit the data to genetically-typed salmon but with (necessarily) reduced time series?
 
 Need to consider finer spatial scales: what do accumulation curves for individual sites look like?
 
