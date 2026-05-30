@@ -1019,15 +1019,15 @@ loo_compare(loos[c("bmod3", "bmod4", "bmod5", "bmod6")])
 
 ```
 
-Models `bmod2` and `bmod5` outperform their respective alternatives.
+Models `bmod2` and `bmod6` outperform their respective alternatives although the differences between `bmod6` and `bmod4` and `bmod5` are insignificant.
 
 ### interpretation
 
-While output from the two models designed to study the importance of first flush timing on migration phenology are similar, `mbod5` outperformed `bmod3` and `bmod4` so let's work through the output for `mbod4`. The diagnostics look clean again — all Rhat = 1.00, ESS well above 1000. How should we understand these results?
+While output from the models designed to study the importance of first flush timing on migration phenology are similar, `mbod6` outperformed `bmod5` and `bmod4` so let's work through the output for `mbod6`. The diagnostics look clean again — all Rhat = 1.00, ESS well above 1000. How should we understand these results?
 
-- `Intercept` (101.26, CI \[93.36-109.29\]): This is the expected `wd` for the 10th percentile benchmark in the reference region (Central Delta) at the mean year when `ff_wyd` = 0. Since day 0 of the water year isn't meaningful biologically, treat this more as a mathematical anchor than an interpretable quantity.
+- `Intercept` (101.68, CI \[91.77-11.94\]): This is the expected `wd` for the 10th percentile benchmark in the reference region (Central Delta) at the mean year when `ff_wyd` = 0. Since day 0 of the water year isn't meaningful biologically, treat this more as a mathematical anchor than an interpretable quantity.
 
-- Day of the first flush (`ff_wyd`; 0.21, CI \[0.13-0.29\]): Credibly positive — each day later that first flush occurs, the 10th percentile outmigration benchmark shifts \~0.21 days later. First flush timing matters: a pulse that comes a month late pushes early migrants about 6 days later.
+- Day of the first flush (`ff_wyd`; 0.21, CI \[0.13-0.30\]): Credibly positive — each day later that first flush occurs, the 10th percentile outmigration benchmark shifts \~0.21 days later. First flush timing matters: a pulse that comes a month late pushes early migrants about 6 days later.
 
 - Interactions between first flush timing and the benchmarks:
 
@@ -1041,7 +1041,7 @@ While output from the two models designed to study the importance of first flush
 
 - Regional effects (region) are comparable to results from the earlier models. As expected, salmon reach the upstream regions (lower Sacramento and North Delta) before reaching the Central Delta by about 8 days for the Lower Sacramento and by about 2.5 days for the North Delta. Timing at the South Delta cannot be distinguished from the Central Delta.
 
-- Change over time (`wy_meanCentered`; -0.30, CI \[-0.47--0.12\]): There is a credible temporal trend towards earlier migration, although it's modified by the timing of first flush events.
+- Change over time (`wy_meanCentered`; -0.29, CI \[-0.48--0.11\]): There is a credible temporal trend towards earlier migration, although it's modified by the timing of first flush events.
 
 - `sigma` (8.56): Confirms that first flush timing adds modest but real explanatory power.
 
@@ -1049,7 +1049,7 @@ While output from the two models designed to study the importance of first flush
 
 ### priors
 
-Initially, I accepted the default priors that `brms` employs. These weren't bad – 'flat' for all except for the `intercepts` and for `sigma` where it uses `student_t`, but the tuning done for `bmod5` really improved the model outcome.\
+Initially, I accepted the default priors that `brms` employs. These weren't bad – 'flat' for all except for the `intercepts` and for `sigma` where it uses `student_t`, but the tuning done for `bmod6` really improved the model outcome.\
 
 ```{r}
 #| label: priors
@@ -1061,6 +1061,7 @@ prior_summary(bmod2)
 prior_summary(bmod3)
 prior_summary(bmod4)
 prior_summary(bmod5)
+prior_summary(bmod6)
 
 ```
 
@@ -1077,5 +1078,7 @@ Need to consider finer spatial scales: what do accumulation curves for individua
 What about including the whole year and limiting the time series to post-1992 (or thereabouts)?
 
 Surely there is an applicable metric for the magnitude of a first flush event. Include that in one of these models!
+
+Does the size of outmigrating salmon change over the course of the year? Is that affected by environmental factors (e.g., maybe the size of the first 10% increases when the timing is pushed later in the season)?
 
 What about other salmon data sources (eg trawls from Chipps Island)? What about other fish species?

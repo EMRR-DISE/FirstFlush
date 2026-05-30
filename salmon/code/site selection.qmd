@@ -355,6 +355,9 @@ sites <-
   tibble(station = c(cen_delta, l_sac, n_delta, s_delta)) %>% 
   left_join(stations_with_rkm, by = "station") %>% 
   arrange(., region) %>% 
+  # river_km is approx dist from confluence
+  # RKI is the kms to the Golden Gate, following thalweg
+  mutate(RKI = river_km + 86) %>% 
   write_rds(., here("salmon/data/processed/sites.rds"))
 
 # what does effort look like by region?
