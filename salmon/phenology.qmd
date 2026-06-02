@@ -84,12 +84,21 @@ Let's pull in Rosie's storm data including *first flush* events, both timing and
 
 load(here("data/processed/storms/StormData.RData"))
 
-# use 'Firststorms'
+# use 'Sacflow_wstorms'
+
 storms <-
-  Firststorms %>% 
-  arrange(WY) %>% 
-  # wyd of first flush events for each wy
-  mutate(wyd = get_waterYearDay(Date))
+  Sacflow_wstorms %>% 
+  group_by(ID) %>% 
+  summarise(
+    start_date = min(Date),
+    wy = get_waterYear(start_date),
+    ff_wyd = get_waterYearDay(start_date),
+    total_flow = sum(SAC + YOLO, na.rm = TRUE),
+    exports = sum(OUT, na.rm = TRUE)
+  ) %>% 
+  group_by(wy) %>% 
+  filter(start_date == min(start_date)) %>% 
+  ungroup()
 
 write_rds(storms, here("salmon/data/processed/storms.rds"))
 
@@ -713,20 +722,14 @@ Pull in Rosie's storm data and integrate that with the benchmark data from above
 #| message: false
 #| warning: false
 
-
-storms <- 
-  read_rds(here("salmon/data/processed/storms.rds")) %>% 
-  mutate(ff_wyd = wyd,
-         .keep = "unused")
-
 # no first flush storms for 1977, 2020, 2022 and 2025--filter(is.na(WY))
 
 ff_data <- 
   three_month_regional_benchmarks %>% 
   left_join(storms,
-            join_by(wy == WY),
+            join_by(wy),
             keep = FALSE) %>% 
-  dplyr::select(wy, wy_meanCentered, wyt, ff_wyd, percentile, wd, SAC, region = region_label) %>% 
+  dplyr::select(wy, wy_meanCentered, wyt, percentile, wd, ff_wyd, total_flow, exports, region = region_label) %>% 
   filter(!is.na(ff_wyd))
 
 ```
@@ -840,7 +843,8 @@ conditional_effects(bmod3, "ff_wyd:percentile") # ff matters more early in migr
 
 bmod4 <- 
   brm(data = ff_data,
-      # within yr obs may not be independent; this may help
+      # within yr obs may not be independent; 
+      # adding random intercept (1|wy) for wy may help
       wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + (1 | wy),
       family = student,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
@@ -887,7 +891,7 @@ conditional_effects(bmod5, "ff_wyd:percentile")
 
 ```
 
-The diagnostics look clean again — all `Rhat` = 1.00, ESS well above 1000, and `nu` well below 10. The results look really good, but I think we should add water year type to the model to see if overall water year conditions affect migration timing. This could, for example, affect the tail end of the migration (`day_90`) while having little or no effect on the first 10%.
+The diagnostics look clean again — all `Rhat` = 1.00, ESS well above 1000, and `nu` well below 10. Adding the random intercept for water year `(1 | wy)` allows some years to be systematically higher or lower in `wd` than the global mean, while sharing information across years via partial pooling. The results look really good, but I think we should add water year type to the model to see if overall water year conditions affect migration timing. This could, for example, affect the tail end of the migration (`day_90`) while having little or no effect on the first 10%.
 
 ```{r}
 #| label: ff+wyt
@@ -1062,6 +1066,72 @@ prior_summary(bmod3)
 prior_summary(bmod4)
 prior_summary(bmod5)
 prior_summary(bmod6)
+
+```
+
+### magnitude
+
+Let's incorporate the magnitude of these first flush events.
+
+```{r}
+#| label: ff-magnitude
+
+# flow data includes big numbers; best to standardize this variable
+ff_data <- ff_data %>% mutate(flow_scaled = scale(total_flow))
+
+# now let's add this to the model; this just with the default priors bc my efforts earlier really didn't improve things
+bmod7 <- brm(
+  data = ff_data,
+  # note addition of 3-way interaction
+  wd ~ 1 + ff_wyd * flow_scaled * percentile + region + wy_meanCentered + (1 | wy),
+  family = student,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  seed = 42,
+  file = here("salmon/results/bmod7"),
+  file_refit = "on_change"
+)
+
+prior_summary(bmod7)
+pp_check(bmod7) # looks good
+plot(bmod7) # SAC isn't a player!
+summary(bmod7)
+
+bmod7a <- brm(
+  data = ff_data %>% 
+    # exclude tail end of the migration
+    filter(percentile != "day_90"),
+  # timing only; baseline model
+  wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + (1 | wy),
+  family = student,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  seed = 42,
+  file = here("salmon/results/bmod7a"),
+  file_refit = "on_change"
+)
+pp_check(bmod7a) # looks good
+plot(bmod7a)
+summary(bmod7a)
+
+bmod7b <- brm(
+  data = ff_data %>% 
+    # exclude tail end of the migration
+    filter(percentile != "day_90"),
+  # with 3-way interaction
+  wd ~ 1 + ff_wyd * flow_scaled * percentile + region + wy_meanCentered + (1 | wy),
+  family = student,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  seed = 42,
+  file = here("salmon/results/bmod7b"),
+  file_refit = "on_change"
+)
+pp_check(bmod7b)
+plot(bmod7b) # looks super good
+summary(bmod7b)
+
+bmod7 <- add_criterion(bmod7, "loo")
+bmod7a <- add_criterion(bmod7a, "loo")
+bmod7b <- add_criterion(bmod7b, "loo")
+loo_compare(bmod7a, bmod7b)
 
 ```
 
