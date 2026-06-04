@@ -1,0 +1,287 @@
+---
+title: "Delta Smelt response to First Flush"
+author: "Katie"
+date: '2025-12-10'
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+# Load packages
+```{r}
+library(devtools)
+library(tidyverse)
+library(lubridate)
+library(ggpubr)
+library(cder)
+library(zoo)
+library(dplyr)
+library(readxl)
+library(sf)
+library(geosphere)
+library(glmmTMB)
+```
+
+# Code from: https://github.com/Delta-Stewardship-Council/deltafish/blob/main/README.md
+```{r}
+#Pull in fish data from EDI
+devtools::install_github("Delta-Stewardship-Council/deltafish", force=TRUE) #Installs version 1.0.0 but curl package appears to be causing trouble. Tried skipping updating packages as installing deltafish thru R was unsuccessful
+
+library(deltafish)
+
+clear_cache()
+show_cached_revision()
+create_fish_db(edi_pid="edi.1075.2")
+
+#Open connection to database to download and query data
+con <- open_database()
+
+# open our two data tables
+surv <- open_survey(con)
+fish <- open_fish(con)
+
+# filter for sources and taxa of interest
+# Also filter for dates of interest. Although dates and datetimes are stored as text in the dataset,
+# you can still filter on them using text strings in the "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS" format.
+
+#Hypothesis 1:     The centroid of distribution for adult Delta Smelt will shift upstream during and following a first flush event. 
+####Validates regulatory response with historical DS data 
+####Are flow and turbidity both necessary to DS response? 
+####Data: FMWT and SKT data based on FF timing choose surveys before and after 
+
+surv_skt = surv %>%
+  filter(Source == "SKT" & Date > "1990-01-01") %>%
+  select(SampleID, Survey, Date, Source, Station, Sal_surf, Temp_surf,
+         TurbidityNTU, Secchi, Tow_volume,
+         Latitude, Longitude)
+
+
+surv_fmwt = surv %>%
+  filter(Source == "FMWT" & Date > "1990-01-01") %>%
+  select(SampleID, Survey, Date, Source, Station, Sal_surf,
+         Temp_surf, TurbidityNTU, Secchi, Tow_volume,
+         Latitude, Longitude)
+
+surv_20mm = surv %>%
+  filter(Source == "20mm" & Date > "1990-01-01") %>%
+  select(SampleID, Survey, Date, Source, Station, Sal_surf, Temp_surf,
+         TurbidityNTU, Secchi, Tow_volume,
+         Latitude, Longitude)
+
+fish_smelt <- fish %>%
+  filter(Taxa %in% c("Hypomesus transpacificus"))
+
+# do a join and collect_data the resulting data frame
+# collect_data executes the sql query, converts Date and Datetime columns to the correct format and timezone, and gives you a table
+df <- left_join(surv_fmwt, fish_smelt) %>% 
+    collect_data() 
+
+dfskt <- left_join(surv_skt, fish_smelt) %>%
+  collect_data()
+
+df20 <- left_join(surv_20mm, fish_smelt) %>%
+  collect_data()
+
+# close connection to database
+close_database(con)
+
+save(df, dfskt, df20, file = "processedfishdata.RData")
+```
+
+# Data and functions
+```{r}
+#Pull in fish and storm datasets
+
+load("C:/Users/kosborn/Documents/FirstFlushSynthesis/Analyses/Data/StormData.RData")
+load("C:/Users/kosborn/Documents/FirstFlushSynthesis/Analyses/Data/processedfishdata.RData")
+Regions20mm <- read_excel(here::here("Data/IEPregions.xlsx"), sheet = 2)
+stationlu_mwt <- read.csv("Data/FMWTstationLU.csv")
+stationlu_skt <- read.csv("Data/SKTstationLU.csv")
+
+#create some helpful functions
+water_year <- function(x) {
+  dplyr::if_else(
+    lubridate::month(x) >= 10,
+    lubridate::year(x) + 1L,
+    lubridate::year(x))} #Create a function to calculate water year
+
+JulianWY <- function(x) {
+  dplyr::if_else(
+    lubridate::month(x) >= 10,
+    as.integer(x - lubridate::make_date(lubridate::year(x), 10, 1)),
+    as.integer(x - lubridate::make_date(lubridate::year(x) - 1L, 10, 1)))} #create function to calculate days since start of WY
+```
+
+
+# First Hypothesis: The centroid of distribution for adult Delta Smelt will shift upstream during and following a first flush event as evidence of FF cuing the spawning migration to freshwater habitats
+```{r}
+##  Approach: Calculate the centroid of distribution for adult DS, using FMWT, SMWT, and SKT data. Convert that into RKM and then calculate the change in position between surveys as upstream (positive) or downstream (negative). Add a column that's just direction - upstream, downstream, or no change. Then bring in storms data and ask Dave: how do I take that and code the following two questions: Is the change in position for the surveys surrounding FF more likely to be upstream? If so, do fish move further upstream following FF than between surveys that both occur either before or after FF? Or maybe they move farthest between the two surveys immediately after FF?
+
+##  Assign location data to all catch records from FMWT, SMWT, and SKT, then bind into a single dataframe
+station_mwt <- stationlu_mwt %>%
+  mutate(Station = as.character(Station))
+station_skt <- stationlu_skt %>%
+  mutate(Station = as.character(Station))
+
+#join location information by station and assign location data from LU tables to data points with missing coordinates
+mwt<-df %>%
+  inner_join(station_mwt, by = "Station")  %>%
+  mutate(
+    Latitude = if_else(is.na(Latitude), DD_Latitude, Latitude),
+    Longitude = if_else(is.na(Longitude), DD_Longitude, Longitude))
+
+skt <-dfskt %>%
+  inner_join(station_skt, by = "Station")%>%
+  mutate(
+    Latitude = if_else(is.na(Latitude), StationLatitude, Latitude),
+    Longitude = if_else(is.na(Longitude), StationLongitude, Longitude))
+
+fallspring <- bind_rows(mwt, skt) #combine surveys into a single data frame
+
+fallspring <-fallspring %>%
+  mutate(WY = water_year(Date))
+
+fallspring <-write.csv(fallspring, file="Output/fallspring.csv")
+
+FF <- Firststorms %>% 
+  mutate(dowy = JulianWY(Date))
+
+#calculate centroid of distribution (code from Rosie) Using sf's st_centroiddf_sf <- st_as_sf(df, coords = c('long', 'lat')) 
+    centroids_sf <- df_sf %>%  group_by(site) %>%  
+      summarize(geometry = st_union(geometry)) %>%  
+      st_centroid 
+```
+
+#Second hypothesis: Delta Smelt recruitment will be stronger in years with an earlier first flush event, especially when coupled with multiple storm-driven flow events (Using 20mm data to look at recruitment strength)
+```{r}
+##Approach: First, calculate catch accumulation curves and run models looking at the percentage of catch as a function of the day of the WY on which FF occurs, WY as a fixed effect to account for pop decline over time, and the previous year's FMWT index as calculated by Polansky. Then, calculate total AF to look at storm magnitude and add that as an additional predictor in addition to day of WY and in isolation. 
+
+##First, join region information to 20mm catch
+Region20 <- Regions %>% 
+  rename(Station = "20mmStation")%>%
+  mutate(Station = as.character(Station)) #gets station field to same name and data type as in 20mm df
+
+Region20catch <-df20 %>%
+  inner_join(Region20, by = "Station") #join Region info
+Region20catch <-Region20catch %>%
+  mutate(WY = water_year(Date))
+
+#Calculate regional catch by survey week
+RegCatch<-Region20catch %>% 
+  group_by(WY, Region, Survey) %>% 
+  summarize("Catch"= sum(Count))
+head(RegCatch)
+
+#RegCatch17 <- filter(RegCatch, WY == 2017) #exploring data
+ggplot(data=RegCatch17, aes(x=Date, y=Catch, fill=Region)) +
+    geom_col(position = position_dodge2(width = 0.9, preserve = "single"), colour="black") +
+    theme_bw() +
+    ylab("Total Regional DS 20mm Catch") +
+    xlab("Survey Date") +
+    scale_fill_viridis_d() +
+    theme(axis.text.x = element_text(angle = 90))
+    
+# regional cumulative curves
+RegionTot <- RegCatch %>%
+  arrange(WY, Region, Survey) %>%
+  group_by(WY, Region) %>%
+  mutate(cum_catch = cumsum(Catch))
+
+# total (all regions combined)
+TotCatch <- RegCatch %>%
+  group_by(WY, Survey) %>%
+  summarise(catch = sum(Catch), .groups = "drop") %>%
+  arrange(WY, Survey) %>%
+  group_by(WY) %>%
+  mutate(cum_catch = cumsum(catch))
+
+#plotting above accumulation curves, first broken out by yr, then all yrs
+ggplot(RegionTot, aes(x = Survey, y = cum_catch, color = factor(Region))) +
+  geom_line() +
+  labs(color = "Region")+
+  facet_wrap(~WY, ncol=5, nrow=6, scales = "free_y") +
+  scale_x_continuous(breaks = 1:8, limits = c(1, 8)) +
+    theme_bw() +
+    ylab("Regional Cummulative DS Catch") +
+    xlab("Survey Week") +
+    theme(legend.position = "right")
+
+northwest <-RegionTot %>%
+  filter(Region != "South Delta")
+
+RegionTot <- RegionTot %>%
+  group_by(WY, Region) %>%
+  mutate(
+    total_catch = max(cum_catch, na.rm = TRUE),
+    prop_catch = ifelse(total_catch == 0, NA_real_, cum_catch / total_catch)
+  )
+
+
+p_thresh <- RegionTot %>%
+  group_by(WY, Region) %>%
+  summarize(
+    week_10 = {
+      w <- Survey[prop_catch >= 0.1]
+      if (length(w) == 0) NA_real_ else min(w)
+    },week_10 = {
+      w <- Survey[prop_catch >= 0.5]
+      if (length(w) == 0) NA_real_ else min(w)
+    },
+    week_90 = {
+      w <- Survey[prop_catch >= 0.9]
+      if (length(w) == 0) NA_real_ else min(w)
+    },
+    .groups = "drop"
+  )
+
+ggplot(RegionTot, aes(x = Survey, y = cum_catch, color = factor(Region))) +
+  geom_line() +
+  # 50% line (black)
+  geom_vline(data = p_thresh,
+             aes(xintercept = week_50),
+             color = "black",
+             linetype = "dashed",
+             inherit.aes = FALSE) +
+  # 90% line (red)
+  geom_vline(data = p_thresh,
+             aes(xintercept = week_90),
+             color = "red",
+             linetype = "dashed",
+             inherit.aes = FALSE) +
+  labs(color = "Region") +
+  facet_wrap(~WY, ncol = 5, nrow = 6, scales = "free_y") +
+  scale_x_continuous(breaks = 1:8, limits = c(1, 8)) +
+  theme_bw() +
+  ylab("Regional Cummulative DS Catch") +
+  xlab("Survey Week") +
+  theme(legend.position = "right")
+
+ggplot(TotCatch, aes(x = Survey, y = cum_catch, color = factor(WY))) +
+  geom_line() +
+  scale_x_continuous(breaks = 1:8, limits = c(1, 8)) +
+  labs(color = "Year")
+
+#Join FF df to regional catch totals from 20mm
+cdfw_tot<- RegCatch %>%
+  group_by(WY) %>%
+  summarise(TotalCatch = sum(Catch, na.rm = TRUE))
+  
+df20<- cdfw_tot %>%
+  inner_join(FF, by = "WY")
+
+
+Total20 <- RegCatch %>%
+  inner_join(FF, by = "WY")
+
+m2 <- glmmTMB(
+  Catch ~ dowy + (1 | Survey ) + (1 | WY) + (1 | Region),
+  family = nbinom2,
+  data = Total20) 
+
+#added WY as fixed effect rather than random to account for pop decline
+m3 <- glmmTMB(
+  Catch ~ dowy + (1 | Survey ) + (WY) + (1 | Region),
+  family = nbinom2,
+  data = Total20)
+summary(m3) #also not significant (p=.13) and weak response (-0.014)
+
+```
