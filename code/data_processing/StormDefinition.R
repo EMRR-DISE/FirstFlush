@@ -177,3 +177,5 @@ Storms = group_by(Sacflow_wstorms, ID) %>%
   summarize(TotalFlow = sum(Volume), Exports = sum(Exports, na.rm =T))
 
 FirstStorms = left_join(Firststorms, Storms)
+
+save(Sacflow_wstorms, Storms, StormStartEnd, FirstStorms, file = "data/processed/storms/StormData.RData")
