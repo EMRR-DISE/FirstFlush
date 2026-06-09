@@ -1,0 +1,20 @@
+---
+title: "README"
+author: "Pete Nelson"
+editor: visual
+---
+
+**Project goal**
+
+Use DJFMP (Delta Juvenile Fish Monitoring Program) data to explore the potential effects of first flush events on fish abundance and distribution in the lower Sacramento River, the Sacramento-San Joaquin Delta, Suisun Bay, San Pablo Bay and, possibly, San Francisco Bay. Effects in the lower San Joaquin River too would be interesting, but it's not certain yet if we have the data to do so.
+
+**Work flow**
+
+1.  Download DJFMP data from EDI and save locally (*not* included in the GitHub repo; files too large). Retain code as a separate file.
+2.  Select the sampling stations ('sites') appropriate to the study, taking the frequency and regularity with which these sites were sampled into account. Name groups of stations and save them for easy recall during multiple analyses. Develop a data frame that includes the site name, site code, region, and river kilometer.
+3.  Filter beach seine data by selected sites and by month, retaining data from January 1 through March 31 only.
+4.  Develop accumulation curves for fish species of interest for each site. Initial focus: juvenile salmon, all run types. Retain what data are available on run identification in the raw data.
+5.  Pull day of the water year (wyd) for each site and each water year when benchmarks are achieved: 10% of the annual total, 50% and 90%. Initially, lump all run types, but consider using genetically-identified WR separately.
+6.  Develop a data frame of water years, sites, benchmark wyd (10/50/90) plus site details.
+7.  Download dayflow data and other hydrological data relevant to first flush synthesis objectives. Save these data locally; likely too large to include in the GitHub repo too.
+8.  Propose and test relevant hypotheses.

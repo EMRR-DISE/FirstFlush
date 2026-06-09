@@ -12,9 +12,12 @@
         "Quimby",
         "Rdata",
         "Sacflow",
+        "tolower",
+        "tsibble",
         "turb",
         "Vernalis",
         "waterdata",
+        "wint",
         "WQES",
         "wstorms"
     ]

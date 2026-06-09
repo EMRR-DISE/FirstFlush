@@ -22,7 +22,7 @@ One package *not* available on CRAN: If necessary, get it using `remotes::instal
 #| message: false
 
 # library(conflicted) # causes WAAAY more trouble than it solves!
-library(tidyverse)
+
 library(here)
 library(readxl)
 library(janitor) 
@@ -35,6 +35,9 @@ library(dataRetrieval)
 library(EflowStats)
 library(fishualize)
 library(tidybayes)
+library(nlme)
+library(tidyverse)
+
 ```
 
 # load data
@@ -43,9 +46,11 @@ library(tidybayes)
 #| label: seine-data
 #| echo: true
 
-# beach seine data
+# beach seine data ('raw' includes all spp)
 raw <- 
   read_rds(here("salmon/data/raw/raw.rds"))
+
+##### not required for salmon phenology #######
 
 # naming conventions
 taxonomy <- 
@@ -71,20 +76,33 @@ fish_codes <-
 
 ## storm data
 
-Let's pull in Rosie's storm data—I think this includes *first flush* events, both timing and magnitude.
+Let's pull in Rosie's storm data including *first flush* events, both timing and magnitude.
 
 ```{r}
 #| label: storm-data
+#| message: false
+#| warning: false
+
 
 load(here("data/processed/storms/StormData.RData"))
 
-# use 'Firststorms'
-storms <-
-  Firststorms %>% 
-  arrange(WY) %>% 
-  mutate(wyd = get_waterYearDay(Date))
+# use 'Sacflow_wstorms'
 
-saveRDS(storms, here("salmon/data/processed/storms.rds"))
+storms <-
+  Sacflow_wstorms %>% 
+  group_by(ID) %>% 
+  summarise(
+    start_date = min(Date),
+    wy = get_waterYear(start_date),
+    ff_wyd = get_waterYearDay(start_date),
+    total_flow = sum(SAC + YOLO, na.rm = TRUE),
+    exports = sum(OUT, na.rm = TRUE)
+  ) %>% 
+  group_by(wy) %>% 
+  filter(start_date == min(start_date)) %>% 
+  ungroup()
+
+write_rds(storms, here("salmon/data/processed/storms.rds"))
 
 ```
 
@@ -96,16 +114,19 @@ There are beach seine data from a large number of sites, but the consistency wit
 
 ```{r}
 #| label: limit-sites
+#| message: false
+#| warning: false
 
-# list of beach seine station codes identified minimally adequate for 
-# temporal coverage
-good <- 
-  tibble(station = read_rds(here("salmon/data/processed/selected_site_codes.rds")))
+
+# list of beach seine stations identified minimally adequate for 
+# temporal coverage (tibble includes region and region_label)
+sites <- 
+  read_rds(here("salmon/data/processed/sites.rds"))
 
 # select data from those minimum effort sites and for complete water years (1976-10-01 onwards)
 dat <-
   raw %>% 
-  filter(station %in% good$station,
+  filter(station %in% sites$station,
          # limit to data collected during complete water years
          date >= "1976-10-01") %>% 
   mutate(year = year(date),
@@ -113,22 +134,11 @@ dat <-
   relocate(region, .after = id_code) %>% 
   relocate(year:month, .before = date)
 
-reg_labs <-
-  tibble(region = factor(1:6),
-         region_label = c("Lower Sac R", "N Delta", "Cen Delta", "S Delta",
-                          "Lower SJR", "SF & SP Bays"))
-
 # create monthly coverage indicator and retain region_code
 coverage <- dat %>%
   distinct(station, year, month, region) %>%
   # 'tag' months sampled
   mutate(sampled = 1)
-
-# create tibble of station_code and region_code for later use
-sta_reg <-
-  coverage %>%
-  distinct(station, region) %>% 
-  left_join(reg_labs, by = "region")
 
 ```
 
@@ -140,6 +150,9 @@ Add data on *water year types* to the data:
 
 ```{r}
 #| label: wy-wyd
+#| message: false
+#| warning: false
+
 
 # add variables: water year and day of water year
 # select data begining with WY 1976 
@@ -161,7 +174,8 @@ dat <-
   group_by(date, time, station) %>% 
   mutate(sample_id = cur_group_id()) %>% 
   ungroup() %>% 
-  relocate(sample_id)
+  relocate(sample_id) %>% 
+  write_rds(., here("salmon/data/raw/dat.rds"))
 
 ```
 
@@ -173,6 +187,9 @@ Calculate the accumulated number of salmon over the course of each water year an
 
 ```{r}
 #| label: counts
+#| message: false
+#| warning: false
+
 
 # daily counts
 # pivot to simplify summing Chinook counts (including 0's) for each sample unit
@@ -190,13 +207,17 @@ seine <-
     # sum counts if multiple matches
     values_fn = sum
   ) %>% 
-  dplyr::select(c(sample_id:water_temp, CHN))
+  dplyr::select(c(sample_id:water_temp, CHN)) %>% 
+  left_join(sites, by = "station") %>% 
+  mutate(location = location.x, .keep = "unused") %>% 
+  dplyr::select(-c(region, location.y, method_code)) %>% 
+  relocate(c(region_label, location, river_km), .after = station)
 
 ### daily counts -----
 # aggregate to daily totals bc freq >>1 seine per day
-# note that this will obscure potential differences among locations
 
-daily <-
+# aggregated across all selected sites
+daily_delta <-
   seine %>%
   group_by(wy, month, wd) %>%
   summarise(
@@ -204,100 +225,160 @@ daily <-
     .groups = "drop"
   )
 
+# aggregated by region
+daily_regional <-
+  seine %>% 
+  group_by(region_label, wy, month, wd) %>% 
+  summarise(
+    daily_total = sum(CHN, na.rm = TRUE),
+    .groups = "drop"
+  )
+
 ### cumulative percent------
-# calc cumulative percentage for each wy
-daily_cum <-
-  daily %>% 
-  group_by(wy) %>% 
-  arrange(wy, wd) %>% 
-  mutate(
-    annual_total = sum(daily_total),
-    cum_total = cumsum(daily_total),
-    cum_percent = 100 * cum_total / annual_total
-  ) %>% 
-  arrange(wy, month, wd) %>% 
-  ungroup()
-
-write_rds(daily_cum, here("salmon/data/processed/daily_cum.rds"))
-
-# calc cumulative percentage for each wy but limited to the period from Jan 1-Mar 31
-# Jan 1 is wd 93; Mar 31 is wd 182 (leap years, it's 183 but I'm going to ignore this)
-
-daily_cum_limited <-
-  daily %>% 
+# limited to the period from Jan 1-Mar 31
+# calc cumulative percentage for each wy during that 3-month period, delta-wide
+delta_cumul <-
+  daily_delta %>% 
   filter(month <= 3) %>% 
   group_by(wy) %>% 
   arrange(wy, wd) %>% 
   mutate(
     annual_total = sum(daily_total),
-    cum_total = cumsum(daily_total),
-    cum_percent = 100 * cum_total / annual_total
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
   ) %>% 
   arrange(wy, month, wd) %>% 
-  ungroup()
+  ungroup() %>% 
+  write_rds(., here("salmon/data/processed/delta_cumul.rds"))
 
-write_rds(daily_cum_limited, here("salmon/data/processed/daily_cum_limited.rds"))
+# cumulative totals and percentages for Jan-Mar by region
+regional_cumul <-
+  daily_regional %>% 
+  filter(month <= 3) %>% 
+  group_by(wy, region_label) %>% 
+  arrange(region_label, wy, wd) %>% 
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
+  ) %>% 
+  arrange(region_label, wy, month, wd) %>% 
+  ungroup() %>% 
+  write_rds(., here("salmon/data/processed/regional_cumul.rds"))
+
+# cumulative totals and percentages for Jan-Mar by station
+station_cumul <-
+  seine %>% 
+  group_by(station, wy, month, wd, river_km) %>% 
+  summarise(
+    daily_total = sum(CHN, na.rm = TRUE),
+    .groups = "drop"
+  ) %>% 
+  filter(month <= 3) %>% 
+  group_by(wy, station) %>% 
+  arrange(station, wy, wd) %>% 
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
+  ) %>% 
+  arrange(station, wy, month, wd) %>% 
+  ungroup() %>% 
+  write_rds(., here("salmon/data/processed/station_cumul.rds"))
 
 ```
 
+Plot the accumulation curves.
+
 ```{r}
-#| label: accum-curves
+#| label: annual-accumulation
 #| message: false
 #| warning: false
 
-daily_cum %>% 
+# annual (whole year) accumulation curves, lumping data from all sites
+daily_delta %>% 
+  group_by(wy) %>% 
   arrange(wy, wd) %>% 
-ggplot(aes(x = wd,
-           y = cum_percent,
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
+  ) %>% 
+  arrange(wy, month, wd) %>% 
+  ggplot(aes(x = wd,
+           y = cumul_percent,
            group = wy,
            color = wy)) +         
   geom_line() +
-  # add 1977 on top in red
-  geom_line(data = subset(daily_cum, wy == 1977), 
-            color = "red", 
-            linewidth = 0.7) +
   xlim(0, 300) +
   geom_hline(yintercept = c(10, 50, 90),
              linetype = "dashed") +
   scale_color_viridis_c(option = "mako") +
   # highlight 1977 data
   annotate("text", x = 250, y = 30,
-           label = "1977 (N=13)", color = "red", fontface = "bold") +
+           label = "1977", color = "red", fontface = "bold") +
   labs(x = "Day of Water Year",
        y = "Cumulative % of Annual Total",
-       title = "Juvenile Chinook Accumulation Curves",
-       subtitle = "data from January - December, 1977-2024",
+       title = "Juvenile Chinook Delta-Wide Accumulation Curves",
+       subtitle = "data from 1977-2024",
        color = "water year") +
   theme_bw()
 
-ggsave(here("salmon/plots/accum_allmonths.png"))
+```
 
-# THIS is the approach that we prob want to use
-# limit the data to January - March: data = daily_cum_limited
-ggplot(daily_cum_limited,
-       aes(x = wd,
-           y = cum_percent,
-           group = wy,
-           color = wy)) +         
+```{r}
+#| label: 3month-accumulation
+#| message: false
+#| warning: false
+
+
+regional_cumul %>% 
+  arrange(region_label, wy, wd) %>%
+  mutate(region_label = fct_relevel(region_label, 
+                                     "Lower Sacramento River", "North Delta", 
+                                     "Central Delta", "South Delta")) %>% 
+  ggplot(aes(x = wd,
+             y = cumul_percent,
+             color = wy,
+             group = wy)) +
   geom_line() +
-  # add 1977 on top in red
-  geom_line(data = subset(daily_cum_limited, wy == 1977), 
-            color = "red", 
-            linewidth = 0.7) +
-  xlim(0, 300) +
+  xlim(50, 200) +
   geom_hline(yintercept = c(10, 50, 90),
              linetype = "dashed") +
   scale_color_viridis_c(option = "mako") +
-  annotate("text", x = 190, y = 30,
-           label = "1977 (N=13)", color = "red", fontface = "bold") +
   labs(x = "Day of Water Year",
-       y = "Cumulative % of Annual Total",
-       title = "Juvenile Chinook Accumulation Curves",
-       subtitle = "data from January - March only, 1977-2024",
-       color = "water year") +
+       y = "Cumulative % of 3-Month Total", 
+       title = "Juvenile Chinook Regional Accumulation Curves",
+       subtitle = "January - March, 1977-2024",
+       color = "Water Year") +
+  facet_wrap(~region_label, nrow = 2) +
   theme_bw()
 
-ggsave(here("salmon/plots/accum_jan2mar.png"))
+```
+
+```{r}
+#| label: sta-accumul
+
+station_cumul %>% 
+  filter(!is.nan(cumul_percent)) %>% 
+  arrange(station, wy, wd, river_km) %>%
+  mutate(station = as.factor(station)) %>% 
+  ggplot(aes(x = wd,
+             y = cumul_percent,
+             color = river_km,
+             # group = wy
+             )) +
+  geom_line() +
+  xlim(50, 200) +
+  geom_hline(yintercept = c(10, 50, 90),
+             linetype = "dashed") +
+  scale_color_viridis_c(option = "mako") +
+  labs(x = "Day of Water Year",
+       y = "Cumulative % of 3-Month Total", 
+       title = "Juvenile Chinook Accumulation Curves by Station",
+       subtitle = "January - March, 1977-2024",
+       color = "River KM") +
+  theme_bw()
 
 ```
 
@@ -312,41 +393,69 @@ Determine the day of each water year when 10%, 50% and 90% of the total annual n
 ## ID benchmarks ----
 # day of water year when the 10%, 50% and 90% of total annual numbers--accumulation benchmarks
 
-benchmarks <- c(10, 50, 90)
-
-# gen df of water year days when threshold reached for each year
-percentile_days <- 
-  daily_cum %>%
+# for entire year, entire delta
+annual_benchmarks <-
+  daily_delta %>% 
+  group_by(wy) %>% 
+  arrange(wy, wd) %>% 
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
+  ) %>% 
+  arrange(wy, month, wd) %>% 
   group_by(wy) %>%
   summarise(
-    day_10 = min(wd[cum_percent >= 10]),
-    day_50 = min(wd[cum_percent >= 50]),
-    day_90 = min(wd[cum_percent >= 90]),
+    day_10 = min(wd[cumul_percent >= 10]),
+    day_50 = min(wd[cumul_percent >= 50]),
+    day_90 = min(wd[cumul_percent >= 90]),
     .groups = "drop"
-  )
-
-# gen df of water year days when threshold reach for each year, using data from
-# January - March only
-percentile_days_limited <- 
-  daily_cum_limited %>%
-  group_by(wy) %>%
-  summarise(
-    day_10 = min(wd[cum_percent >= 10]),
-    day_50 = min(wd[cum_percent >= 50]),
-    day_90 = min(wd[cum_percent >= 90]),
-    .groups = "drop"
-  )
-
-# pivot data to long format to facilitate graphics
-pctl_days <-
-  percentile_days %>% 
+  ) %>% 
   pivot_longer(cols = c(day_10, day_50, day_90), 
                names_to = "percentile", 
                values_to = "wd") %>% 
   mutate(percentile = factor(percentile))
 
-pctl_days_limited <-
-  percentile_days_limited %>% 
+three_month_delta_benchmarks <-
+  delta_cumul %>% 
+  arrange(wy, wd) %>% 
+  group_by(wy) %>% 
+  summarise(
+    day_10 = min(wd[cumul_percent >= 10]),
+    day_50 = min(wd[cumul_percent >= 50]),
+    day_90 = min(wd[cumul_percent >= 90]),
+    .groups = "drop"
+  ) %>% 
+  pivot_longer(cols = c(day_10, day_50, day_90), 
+               names_to = "percentile", 
+               values_to = "wd") %>% 
+  mutate(percentile = factor(percentile))
+
+three_month_regional_benchmarks <-
+  regional_cumul %>% 
+  arrange(region_label, wy, wd) %>% 
+  group_by(region_label, wy) %>% 
+  summarise(
+    day_10 = min(wd[cumul_percent >= 10]),
+    day_50 = min(wd[cumul_percent >= 50]),
+    day_90 = min(wd[cumul_percent >= 90]),
+    .groups = "drop"
+  ) %>% 
+  pivot_longer(cols = c(day_10, day_50, day_90), 
+               names_to = "percentile", 
+               values_to = "wd") %>% 
+  mutate(percentile = factor(percentile))
+
+three_month_station_benchmarks <-
+  station_cumul %>% 
+  arrange(station, wy, wd) %>% 
+  group_by(station, wy) %>% 
+  summarise(
+    day_10 = min(wd[cumul_percent >= 10]),
+    day_50 = min(wd[cumul_percent >= 50]),
+    day_90 = min(wd[cumul_percent >= 90]),
+    .groups = "drop"
+  ) %>% 
   pivot_longer(cols = c(day_10, day_50, day_90), 
                names_to = "percentile", 
                values_to = "wd") %>% 
@@ -360,6 +469,9 @@ Add the water year type data (loaded previously) to the percentile data for anal
 
 ```{r}
 #| label: wy-type
+#| message: false
+#| warning: false
+
 
 ## year type ----
 # first, add water year type to the percentile_days df
@@ -370,28 +482,30 @@ wy_type <-
          watershed = factor(Area),
          .keep = "unused")
 
-pctl_days_wyt <-
+three_month_regional_benchmarks <-
   wy_type %>% 
-  # select Sac watershed, excludes SJR watershed
+  # select Sac watershed; exclude SJR watershed
   filter(watershed == "Sacramento Valley") %>% 
-  # merge w simple df, includes 1977 data 
-  right_join(pctl_days,
+  # merge with benchmark data
+  right_join(three_month_regional_benchmarks,
              by = "wy") %>% 
   dplyr::select(-watershed) %>% 
   # specify order of the wyt levels
-  mutate(wyt = fct_relevel(wyt, "W", "AN", "BN", "D", "C"),
+  mutate(wyt = fct_relevel(wyt, 
+                           c("C", "D", "BN", "AN", "W")),
          # center wy to facilitate model convergence
-         wy_centered = wy - 1977) %>% 
-  relocate(wy_centered, .after = wy)
+         wy_meanCentered = wy - mean(wy)) %>% 
+  relocate(wy_meanCentered, .after = wy)
 
 # make 'wyt' an ordered factor
-pctl_days_wyt <- pctl_days_wyt %>%
+three_month_regional_benchmarks <- 
+  three_month_regional_benchmarks %>%
   mutate(wyt = factor(wyt, levels = c("C", "D", "BN", "AN", "W"), 
                       # must be low to high, where C<D<BN<AN<W
-                      ordered = TRUE))
+                      ordered = TRUE)) %>% 
+  write_rds(
+    here("salmon/data/processed/three_month_regional_benchmarks.rds"))
 
-write_rds(pctl_days_wyt, 
-          here("salmon/data/processed/pctl_days_wyt.rds"))
 
 ```
 
@@ -401,524 +515,642 @@ Plot the water year days when each benchmark (10, 50, or 90%) is reach for each 
 
 ```{r}
 #| label: wy-effect
+#| message: false
+#| warning: false
 
-# figure shows the day of the water year for each benchmark (10, 50, 90%) for each year
 
-benchmark_trends_limited <-
-  pctl_days_limited %>% 
+# quick data qaqc check (shouldn't be any NAs)
+unique(three_month_regional_benchmarks$region_label)
+
+# 10% benchmark
+three_month_regional_benchmarks %>%
+  # limit to the day_10 benchmark
+  filter(percentile == "day_10") %>%
+  mutate(
+    # relevel region_label to establish factor order
+    region_label = factor(
+      region_label,
+      levels = c("Lower Sacramento River",
+                 "North Delta",
+                 "Central Delta",
+                 "South Delta")
+    )
+  ) %>%
   ggplot(
-    # color points according to threshold (10, 50, 90%)
-    aes(x = wy, y = wd, color = percentile)
+    aes(x = wy, y = wd, 
+        # color by region
+        color = region_label)
   ) +
   geom_point(size = 4) +
+  # fish colors!
   scale_color_fish(discrete = TRUE,
-                  option = "Oncorhynchus_tshawytscha",
-                  alpha = 0.6) +
-  geom_smooth(data = pctl_days_limited[4:147,],
-              alpha = 0.2,
-              # show linear trends
+                   option = "Oncorhynchus_tshawytscha",
+                   alpha = 0.6) +
+  # add trend lines
+  geom_smooth(alpha = 0.2,
               method = "lm",
               se = TRUE) +
-  labs(title = "Chinook Salmon Outmigration Timing",
-       subtitle = "data from January-March only; 1977 excluded from trend analyses",
+  theme_bw() +
+  theme(legend.position = "none") +
+  facet_wrap(~ region_label, ncol = 2) +
+  labs(title = "Chinook Salmon Outmigration Timing, 10% Benchmark",
+       subtitle = "data from January - March only",
        x = "Water Year",
-       y = "Day of the Water Year",
-       color = "benchmark") +
-  theme_bw()
+       y = "10% of 3-Month Total Reached (day of water year)")
 
-ggsave(here("salmon/plots/benchmark_trends_limited.png"))
+ggsave(here("salmon/plots/benchmark_10pct.png"))
 
-benchmark_trends_limited
+# 50% benchmark
+three_month_regional_benchmarks %>%
+  # limit to the day_50 benchmark
+  filter(percentile == "day_50") %>%
+  mutate(
+    # relevel region_label to establish factor order
+    region_label = factor(
+      region_label,
+      levels = c("Lower Sacramento River",
+                 "North Delta",
+                 "Central Delta",
+                 "South Delta")
+    )
+  ) %>%
+  ggplot(
+    aes(x = wy, y = wd, 
+        # color by region
+        color = region_label)
+  ) +
+  geom_point(size = 4) +
+  # fish colors!
+  scale_color_fish(discrete = TRUE,
+                   option = "Oncorhynchus_tshawytscha",
+                   alpha = 0.6) +
+  # add trend lines
+  geom_smooth(alpha = 0.2,
+              method = "lm",
+              se = TRUE) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  facet_wrap(~ region_label, ncol = 2) +
+  labs(title = "Chinook Salmon Outmigration Timing, 50% Benchmark",
+       subtitle = "data from January - March only",
+       x = "Water Year",
+       y = "50% of 3-Month Total Reached (day of water year)")
+
+ggsave(here("salmon/plots/benchmark_50pct.png"))
+
+# 90% benchmark
+three_month_regional_benchmarks %>%
+  # limit to the day_90 benchmark
+  filter(percentile == "day_90") %>%
+  mutate(
+    # relevel region_label to establish factor order
+    region_label = factor(
+      region_label,
+      levels = c("Lower Sacramento River",
+                 "North Delta",
+                 "Central Delta",
+                 "South Delta")
+    )
+  ) %>%
+  ggplot(
+    aes(x = wy, y = wd, 
+        # color by region
+        color = region_label)
+  ) +
+  geom_point(size = 4) +
+  # fish colors!
+  scale_color_fish(discrete = TRUE,
+                   option = "Oncorhynchus_tshawytscha",
+                   alpha = 0.6) +
+  # add trend lines
+  geom_smooth(alpha = 0.2,
+              method = "lm",
+              se = TRUE) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  facet_wrap(~ region_label, ncol = 2) +
+  labs(title = "Chinook Salmon Outmigration Timing, 90% Benchmark",
+       subtitle = "data from January - March only",
+       x = "Water Year",
+       y = "90% of 3-Month Total Reached (day of water year)")
+
+ggsave(here("salmon/plots/benchmark_90pct.png"))
+
 
 ```
 
 ## models
 
-### year effect
+### change over time and water year type effects
 
-Testing for a water year effect, focusing first on the *day10* benchmark, when 10% of each annual total has been reached. Code includes multiple checks on model efficacy, and comparisons between alternative model structures.
+Testing for potential effects of water year (i.e., change over time), water year type, regional differences, and differences in the three benchmarks (is there a difference in the slopes).
 
 ```{r}
-#| label: m3-day10
-#| results: false
+#| label: bayes1
 #| message: false
 #| warning: false
 
-# first including data from 1977
-# reaching the 10% benchmark
+# ensure that we've got a nested directory
+# output_dir <- here("salmon", "results")
+# if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-proj_root <- here::here()
-results_dir <- file.path(proj_root, "salmon", "results")
-if (!dir.exists(results_dir)) {
-  dir.create(results_dir, recursive = TRUE)
-}
+# I've used a Gaussian distribution (at least for now) because the distributions 
+# for each benchmark look "normalish." See
+three_month_regional_benchmarks %>%
+  ggplot(aes(wd)) +
+  geom_histogram(bins = 30) +
+  facet_wrap(~ percentile, scales = "free")
+# I'll do a pp_check of the model; if this shows the model giving wd=60 or wd=250 with
+# non-trivial probabilities, I'll have to swtich to Beta or truncated normal distribution
 
-m3.day10.wy <- 
-  brm(data = percentile_days_limited, # use the percentile_days_limited data
-      # use a gaussian (normal) distribution
-      family= gaussian,
-      # specify the model
-      day_10 ~ 1 + wy,
+bmod1 <- 
+  brm(data = three_month_regional_benchmarks %>% 
+        rename(region = region_label),
+      family = gaussian,
+      wd ~ 1 + wy_meanCentered * percentile + wy_meanCentered * mo(wyt) + region,
       # specify parameters for executing the Markov chains
       iter = 2000, warmup = 1000, chains = 4, cores =4,
       # set seed
-      seed = 42)
+      seed = 42,
+      # brms automatically appends '.rds'
+      file = here("salmon/results/bmod1"),
+      file_refit = "on_change"
+      )
 
-# write_rds(m3.day10.wy, here("salmon/results/m3.day10.wy.rds"))
-
-```
-
-```{r}
-#| label: model-check1
- 
-# run posterior predictive check
-pp_check(m3.day10.wy)
-
-# calc the prob that the slope is less than 0
-
-m3.day10.wy %>%
-  spread_draws(b_wy) %>%
-  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
+pp_check(bmod1) # looks good!
+(bmod1_sum <- summary(bmod1)) # see analysis
+plot(bmod1) # looks good
+conditional_effects(bmod1, "wy_meanCentered:percentile") # plot doesn't add much
 
 ```
 
+All `Rhat = 1.00`, so the model converged cleanly. We have effective sample sizes in the low thousands and `n = 507`, so we can take the estimates seriously.
+
+Without going into the output details here (I will with the best model), the entire distribution of the `wd` benchmarks (10th, 50th, 90th percentiles) is moving more than 0.4 days earlier each year, and the shift is statistically credible. The three benchmarks are shifting in parallel rather than diverging or converging. Fish arrive in the Lower Sacramento River about a week prior to their arrival in the Delta, and timing to reach sites within the Delta are indistinguishable from each other. Arrival times are slightly earlier during wet years than in dry years, but that gap has narrowed over time. However, water year hydrology is genuinely heavy-tailed — ENSO events and atmospheric rivers can produce years that are extreme outliers relative to the typical range (see the accumulation curves for 1977 above for example), and I don't want those years unduly affecting my coefficient estimates. A Gaussian model will try harder to accommodate outliers by distorting the fitted mean, whereas a Students t-distribution is more robust to these extreme values and less likely to overfit the model.
+
+I ran the same model using a Students t-distribution (`bmod2`, below):
+
 ```{r}
-#| label: m3-day10-robust
-#| results: false
+#| label: robust
 #| message: false
 #| warning: false
 
-m3.day10.wy_robust <- 
-  brm(data = percentile_days_limited,
-      family = student,  # <--- change from gaussian to student
-      day_10 ~ 1 + wy,
-      # apply loo_moment_match on problematic observations bc crazy 1977 outlier
-      save_pars = save_pars(all = TRUE),
-      iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42)
-      
-write_rds(m3.day10.wy_robust, here("salmon/results/m3.day10.wy_robust.rds"))
-```
-
-```{r}
-#| label: model-check2
-
-# looks a bit better!
-pp_check(m3.day10.wy_robust)
-
-# calc the prob that the slope is less than 0
-
-m3.day10.wy_robust %>%
-  spread_draws(b_wy) %>%
-  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
-
-# calculate LOO for the original Jan-Mar Gaussian model
-m3.day10.wy <- add_criterion(m3.day10.wy, criterion = "loo")
-# warning about "Pareto values > 0.7" happens when one data point (like 1977) is so influential that the model changes drastically when it's removed
-
-# calculate LOO for the new "robust" (Student-t) model
-m3.day10.wy_robust <- add_criterion(m3.day10.wy_robust, criterion = "loo")
-
-# compare the two day10 models
-loo_compare(m3.day10.wy, m3.day10.wy_robust, criterion = "loo")
-
-# notes:
-# the performance difference between the models is very modest: 
-# the rule of thumb is: consider one model "clearly better" if the elpd_diff is more than twice the se_diff, but my difference is 2.8, and my error is 1.5, so both models are performing similarly
-
-m3.day10.wy_robust$criteria$loo
-m3.day10.wy$criteria$loo
-
-# the robust model (using Student-t distribution) seems to perform slightly better, 
-# but the improvement could plausibly be attributed to noise
-
-# let's plot the k values for each model
-plot(m3.day10.wy$criteria$loo)
-plot(m3.day10.wy_robust$criteria$loo)
-# PSIS diagnostic plots confirm that both models are pretty good, but also 
-# show how nicely the 'robust' model handles the extreme datum from 1977
-
-summary(m3.day10.wy_robust)
-plot(m3.day10.wy_robust)
-
-m3.day10.wy_robust %>%
-  spread_draws(b_wy) %>%
-  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
-```
-
-The "robust" model for the *day10* benchmark provides strong support for the hypothesis that migration, particularly the earlier phase of the process, has shifted earlier in the water year by approximately 0.35 days each year from 1997-2024.
-
-The code below models comparable relationships to the previous code, but uses the *day50* and *day90* benchmarks.
-
-```{r}
-#| label: m3-day50
-#| results: false
-#| message: false
-#| warning: false
-
-# reaching the 50% benchmark
-m3.day50.wy <- 
-  brm(data = percentile_days_limited, 
-      # choose a gaussian (normal) distribution
-      family = gaussian,
-      day_50 ~ 1 + wy,
-      iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42)
-
-write_rds(m3.day50.wy, here("salmon/results/m3.day50.wy.rds"))
-
-# reaching the 90% benchmark
-m3.day90.wy <- 
-  brm(data = percentile_days_limited, 
-      family = gaussian,
-      day_90 ~ 1 + wy,
-      iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42)
-
-write_rds(m3.day90.wy, here("salmon/results/m3.day90.wy.rds"))
-```
-
-```{r}
-#| label: model-check3
-
-summary(m3.day50.wy)
-summary(m3.day90.wy)
-
-plot(m3.day50.wy)
-plot(m3.day90.wy)
-
-# calc the prob that the slope is less than 0
-
-m3.day50.wy %>%
-  spread_draws(b_wy) %>%
-  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
-
-m3.day90.wy %>%
-  spread_draws(b_wy) %>%
-  summarise(p_slope_lessthan_zero = sum(b_wy < 0) / n())
-```
-
-I tested multiple models to explore the timing of juvenile salmon outmigration, represented by the day of the water year when three benchmarks had been reached over the course of the time series. Each model used a Gaussian distribution with *water year* as the predictor and the day of the water year when those benchmarks–10, 50, and 90--are reached as the response variable: *day10, day50, day90*. I limited the data to those gathered during January, February and March because these were sampled consistently (albeit imperfectly) in every year. Early outmigrants entering the Delta in December or earlier would be missed, but presumably the most important early numbers would be reasonably well represented.
-
-These results present strong evidence for a *year* effect (i.e., model slopes were different from zero, however, the posterior distribution for the *day90* model overlaps 0 slightly (95% CIs: -0.73, 0.05).
-
--For the 10% accumulation model (*day10*), there was an estimated slope of -0.69 days per year and the probability that the slope is less than 0 equals 0.999.
-
--For the 50% accumulation model (*day50*), there was an estimated slope of -0.70 days per year and the probability that the slope is less than 0 equals 1.000.
-
--For the 90% accumulation model (*day90*), there was an estimated slope of -0.33 days per year and the probability that the slope is less than 0 equals 0.955.
-
-### water year type effect
-
-I also attempted to determine if there was an effect of water year type on the timing of Chinook outmigration. Models included both *water year* and *wyt* (water year type) as explanatory variables.
-
-```{r}
-#| label: wyt-effect
-
-# first, add water year type to the percentile_days df
-wy_type <- 
-  read_excel(here("salmon/data/raw/cdec-water-year-type-jun-2025.xlsx")) %>% 
-  mutate(wy = WY,
-         wyt = factor(WYT),
-         watershed = factor(Area),
-         .keep = "unused")
-
-pctl_days_wyt <-
-  wy_type %>% 
-  # select Sac watershed, excludes SJR watershed
-  filter(watershed == "Sacramento Valley") %>% 
-  # merge w simple df, includes 1977 data 
-  right_join(pctl_days,
-             by = "wy") %>% 
-  dplyr::select(-watershed) %>% 
-  # specify order of the wyt levels
-  mutate(wyt = fct_relevel(wyt, "W", "AN", "BN", "D", "C"),
-         # center wy to facilitate model convergence
-         wy_centered = wy - 1977) %>% 
-  relocate(wy_centered, .after = wy)
-
-# make 'wyt' an ordered factor
-pctl_days_wyt <- pctl_days_wyt %>%
-  mutate(wyt = factor(wyt, levels = c("C", "D", "BN", "AN", "W"), 
-                      # must be low to high, where C<D<BN<AN<W
-                      ordered = TRUE))
-
-write_rds(pctl_days_wyt, 
-          here("salmon/data/processed/pctl_days_wyt.rds"))
-
-### wy boxplot -----
-pctl_days_wyt %>% 
-  filter(percentile == "day_10",
-         # no data yet re wyt for 2025
-         wy <= 2024) %>% 
-  ggplot(aes(x = wyt, y = wd, group = wyt)) +
-  geom_boxplot() +
-  labs(title = "Timing of 10% Annual Accumulation Benchmark",
-       x = "Water Year Type",
-       y = "Day of the Water Year") +
-  theme_bw()
-
-
-```
-
-```{r}
-#| label: model-wy*wyt
-#| message: false
-#| warning: false
-#| results: false
-
-# run wy + wyt model with the centered variable, where wyt is ordered & monotonic
-m1.day10.wy.wyt <- 
-  brm(data = pctl_days_wyt %>% 
-        filter(wy <= 2024),
-      family = gaussian,
-      wd ~ 0 + wy_centered + mo(wyt), 
-      iter = 10000, warmup = 1000, chains = 4, cores = 4, 
-      seed = 42)
-
-# save fitted model (this one w the wy centered)
-write_rds(m1.day10.wy.wyt, here("salmon/results/m1.day10.wy.wyt.rds"))
-
-```
-
-```{r}
-#| label: model-check4
-
-summary(m1.day10.wy.wyt)
-plot(m1.day10.wy.wyt)
-# Rhat is perfect
-# water year (centered) effect looks solid 
-# posterior distributions look great (uniform)
-# mcmc look great too
-# estimates for year type are wonky--reflects the data! 
-# strong effect of 'year type' as a monotonic, ordered factor. cool!
-# is there an interaction effect?
-# should also include some semi-informed priors?
-
-# compute estimated effect for each wyt level
-# get predicted effect of each wyt level
-# holding wy_centered at 0
-ce <- conditional_effects(m1.day10.wy.wyt, effects = "wyt", re_formula = NA)
-
-# extract the estimate for each level, plus 95% CIs
-wyt_effects <- 
-  ce$wyt[, c("wyt", "estimate__", "lower__", "upper__")]
-
-# round for readability
-wyt_effects$estimate <- 
-  round(wyt_effects$estimate__, 2)
-
-wyt_effects %>% 
-  dplyr::select(-estimate__) %>% 
-  mutate("l-95% CI" = lower__,
-         "u-95% CI" = upper__,
-         .keep = "unused")
-
-# note that these are scaled effects and can't be translated directly into days of the water year! here's an attempt to translate monotonic effects into predicted timing
-# Define levels of water year type
-levels_wyt <- c("C", "D", "BN", "AN", "W")
-
-# predicted wd at reference wy_centered = 0
-preds <- fitted(m1.day10.wy.wyt, newdata = data.frame(
-  wyt = levels_wyt,
-  wy_centered = 0
-))
-
-# assemble into a table
-predicted_wd <- data.frame(
-  wyt = levels_wyt,
-  estimate = round(preds[, "Estimate"], 1),
-  l_95 = round(preds[, "Q2.5"], 1),
-  u_95 = round(preds[, "Q97.5"], 1)
-)
-
-predicted_wd
-
-
-```
-
-```{r}
-#| label: m2-wy*wyt
-
-# run wy * wyt model with the centered variable
-m2.day10.wy.wyt <- 
-  brm(data = pctl_days_wyt %>% 
-        filter(wy <= 2024),
-      family = gaussian,
-      wd ~ 0 + wy_centered * wyt, 
-      iter = 10000, warmup = 1000, chains = 4, cores = 4, 
-      seed = 42)
-
-# save fitted model (this one w the wy centered)
-write_rds(m2.day10.wy.wyt, here("salmon/results/m2.day10.wy.wyt.rds"))
-
-```
-
-```{r}
-#| label: model-check5
-
-summary(m2.day10.wy.wyt)
-plot(m2.day10.wy.wyt)
-
-
-```
-
-```{r}
-#| label: m3-wy*wyt
-
-# run wy * wyt model with the centered variable, 2025 not included, replace Gaussian w Students t distribution
-m3.day10.wy.wyt <- 
-  brm(data = pctl_days_wyt %>% 
-        filter(wy <= 2024),
+bmod2 <- 
+  brm(data = three_month_regional_benchmarks %>% 
+        rename(region = region_label),
       family = student,
-      wd ~ 0 + wy_centered * wyt, 
-      iter = 10000, warmup = 1000, chains = 4, cores = 4, 
-      seed = 42)
+      wd ~ 1 + wy_meanCentered * percentile + wy_meanCentered * mo(wyt) + region,
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 42,
+      file = here("salmon/results/bmod2"),
+      file_refit = "on_change"
+      )
 
-write_rds(m3.day10.wy.wyt, here("salmon/results/m3.day10.wy.wyt.rds"))
-
-```
-
-```{r}
-#| label: model-chec6
-
-# to be consistent, I should prob designate this model as 'robust', but can't be bothered
-summary(m3.day10.wy.wyt)
-plot(m3.day10.wy.wyt)
-
-# posterior predictive check (see density overlay figures)
-pp_check(m1.day10.wy.wyt)
-pp_check(m2.day10.wy.wyt)
-pp_check(m3.day10.wy.wyt)
-
-# calculate LOO for the original water_year + water_year_type Gaussian model
-m1.day10.wy.wyt <- add_criterion(m1.day10.wy.wyt, criterion = "loo")
-
-# calculate LOO for the water_year * water_year_type Gaussian model
-m2.day10.wy.wyt <- add_criterion(m2.day10.wy.wyt, criterion = "loo")
-
-# calculate LOO for the water_year * water_year_type Student-t "robust" model
-m3.day10.wy.wyt <- add_criterion(m3.day10.wy.wyt, criterion = "loo")
-
-# compare the three day10 wyt models with interaction terms
-loo_compare(m1.day10.wy.wyt, m2.day10.wy.wyt, m3.day10.wy.wyt, criterion = "loo")
-
-# no real difference in model performance among the 3...
-
-m1.day10.wy.wyt$criteria$loo
-m2.day10.wy.wyt$criteria$loo
-m3.day10.wy.wyt$criteria$loo
-
-# let's plot the k values for each model (cause I like these figures)
-plot(m1.day10.wy.wyt$criteria$loo)
-plot(m2.day10.wy.wyt$criteria$loo)
-plot(m3.day10.wy.wyt$criteria$loo)
-# everything well below 0.7...
+pp_check(bmod2) # looks good!
+(bmod2_sum <- summary(bmod2)) # see analysis
+plot(bmod2) # looks good
+conditional_effects(bmod2, "wy_meanCentered:percentile") # doesn't add much
 
 ```
 
-### first flush
+This a real improvement over `bmod1` with the `nu` estimate \<10. I compare these two models directly later in this report, but first let's start looking at the possible effects of first flush events.
+
+### first flush effect
+
+Pull in Rosie's storm data and integrate that with the benchmark data from above.
 
 ```{r}
-#| label: first-flush
+#| label: ff-data
+#| message: false
+#| warning: false
 
-pctl_days_wyt <-
-  read_rds(here("salmon/data/processed/pctl_days_wyt.rds"))
-
-storms <- 
-  read_rds(here("salmon/data/processed/storms.rds"))
 # no first flush storms for 1977, 2020, 2022 and 2025--filter(is.na(WY))
 
-first_flush <-
-  pctl_days_wyt %>% 
-  # merge first flush data
-  left_join(storms, 
-            join_by(wy == WY),
-            keep = T) %>% 
-  dplyr::select(wy, percentile, wd, Date, SAC, WY) %>% 
-  # eliminate water years when there are no first flush data
-  filter(percentile == "day_10" & !is.na(WY)) %>% 
-  # determine the day of the water year when first flush occurred
-  mutate(ff_wyd = get_waterYearDay(Date),
-         .keep = "unused")
-
-first_flush %>% 
-  ggplot(aes(ff_wyd, wd)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = TRUE) +
-  theme_bw()
-
-first_flush %>% 
-  ggplot(aes(x = ff_wyd, y = wd)) +
-  geom_point(aes(color = wy), size = 3) + # color by Year to see time trends
-  geom_smooth(method = "lm", color = "black", fill = "gray80") + 
-  scale_color_viridis_c() + # show chronological years
-  labs(
-    title = "Fish Migration Following First Flush Date",
-    x = "First Flush Timing (Water Year Day)",
-    y = "Day 10% Benchmark Reached (Water Year Day)",
-    color = "Water Year"
-  ) +
-  theme_bw()
-
-# calc correlation coefficient (r)
-cor(first_flush$ff_wyd, first_flush$wd, use = "complete.obs")
-
-# simple linear model
-m1.day10.ff <- lm(wd ~ ff_wyd, data = first_flush)
-
-summary(m1.day10.ff)
-
-m2.day10.ff <- 
-  brm(data = first_flush,
-      family = gaussian,
-      wd ~ ff_wyd,
-      iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42)
-print(m2.day10.ff, digits = 4)
-plot(m2.day10.ff)
-write_rds(m2.day10.ff, here("salmon/results/m2.day10.ff.rds"))
-
-m1.day10.ff.SAC <- 
-  brm(data = first_flush,
-      family = gaussian,
-      wd ~ ff_wyd + SAC,
-      iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42)
-print(m1.day10.ff.SAC, digits = 4)
-plot(m1.day10.ff.SAC)
-write_rds(m1.day10.ff.SAC, here("salmon/results/m1.day10.ff.SAC.rds"))
-
-# what's the poss that duration between ff & migration changes over time?
-# calc the difference btwn wd & ff_wyd
-first_flush <- first_flush %>% 
-  mutate(days_between = wd - ff_wyd)
-
-first_flush %>% 
-  ggplot(aes(x = wy, y = days_between)) +
-  geom_point(aes(color = SAC), size = 3) +
-  geom_smooth(method = "lm", color = "black", fill = "pink") + 
-  scale_color_viridis_c() + # show chronological years
-  labs(
-    title = "Time Elapsed from First Flush Event to the 10% Benchmark",
-    x = "Water Year",
-    y = "Lag (water year days)",
-    color = "SAC flow"
-  ) +
-  theme_bw()
-
-m1.day10.df <-
-  brm(data = first_flush,
-      family = gaussian,
-      days_between ~ wy,
-      iter = 2000, warmup = 1000, chains = 4, cores = 4,
-      seed = 42)
-print(m1.day10.df, digits = 4)
-plot(m1.day10.df)
-write_rds(m1.day10.df, here("salmon/results/m1.day10.df.rds"))
-
-# Is there a change in the SIZE of salmon over the years?
-# see 'salmon_sz.qmd'
-
+ff_data <- 
+  three_month_regional_benchmarks %>% 
+  left_join(storms,
+            join_by(wy),
+            keep = FALSE) %>% 
+  dplyr::select(wy, wy_meanCentered, wyt, percentile, wd, ff_wyd, total_flow, exports, region = region_label) %>% 
+  filter(!is.na(ff_wyd))
 
 ```
+
+Let's see if there are any patterns by plotting some of these data.
+
+```{r}
+#| label: plots
+#| message: false
+#| warning: false
+
+
+ff_data %>%
+  ggplot(aes(wd)) +
+  geom_histogram(bins = 30) +
+  facet_wrap(~ percentile, scales = "free")
+# looks good; skew doesn't appear excessive
+
+ff_data %>% 
+  ggplot(aes(x = ff_wyd, y = wd, color = percentile)) +
+  geom_point(size = 4) +
+  # fish colors!
+  scale_color_fish(discrete = TRUE,
+                   option = "Oncorhynchus_tshawytscha",
+                   alpha = 0.6) +
+  geom_smooth(method = "lm") +
+  labs(title = "First Flush and Chinook Outmigration Timing",
+       subtitle = "outmigration during Jan - Mar only",
+       x = "First Flush Timing (day of water year)",
+       y = "% Accumulation Benchmark (day of water year)") +
+  theme_bw()
+
+ggsave(here("salmon/plots/first_flush_timing.png"))
+
+```
+
+### first flush timing
+
+The migration data look cool, but first, does the timing of first flush events change over time? Plotting the timing and then a simple linear regression suggests that first flush events have come later over this time period.
+
+```{r}
+#| label: ff-timing
+
+
+# does the timing of the ff events change over time?
+ff_data %>% 
+  filter(percentile == "day_10", region == "Central Delta") %>% 
+  ggplot(aes(x = wy, y = ff_wyd)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "Day of First Flush",
+       subtitle = "1978 - 2024",
+       x = "Water Year",
+       y = "Day of First Flush (day of water year)") +
+  theme_bw()
+
+lm_ff_annual <-
+  lm(data = ff_data %>% 
+       # ensure we aren't pseudo-replicating
+       filter(percentile == "day_10", region == "Central Delta"), 
+     ff_wyd ~ wy)
+
+summary(lm_ff_annual) # no. there's a slope but way noisy
+
+# evidence of autocorrelation?
+acf(residuals(lm_ff_annual))
+# nope
+
+# what's the potential role of water year type here, given that it's almost
+# certainly correlated with the timing of first flush events?
+lm_ff_wyt <- lm(
+  data = ff_data %>% 
+    filter(percentile == "day_10", region == "Central Delta"),
+  ff_wyd ~ wy + wyt
+)
+summary(lm_ff_wyt)
+
+# let's compare these models
+AIC(lm_ff_annual, lm_ff_wyt)
+anova(lm_ff_annual, lm_ff_wyt)
+
+```
+
+The plot suggested that *maybe* these events were happening later over time, but the regression analysis shows that, while there is an effect of water year *type* on the timing of first flush, there's insufficient evidence to suggest that there's been a change over time. The improvement to the model with the addition of `wyt` is modest (p=0.056), but seems real to me.
+
+### first flush effects on migration timing
+
+Now the question is, does the timing of first flush events affect the timing of juvenile salmon outmigration, as the figure relating migration timing to the timing of first flush events above suggests? I expect that *when* we get that first flush will affect the timing for that 10% benchmark, but that the effect will be reduced or absent with regard to reaching the 50 and 90% benchmarks. Note that we don't have juvenile salmon accumulation data from South Delta for years 1989, 1991, 1993, 1997, 2009, 2010, 2012-2016, 2018, 2019, 2022, and 2023.
+
+```{r}
+#| label: ff-models
+#| message: false
+#| warning: false
+
+bmod3 <- 
+  brm(data = ff_data,
+      # 1st interaction lets slope of wd differ across benchmarks
+      # I expect that day_10 will track ff closely but day_90 not so much
+      wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered,
+      # student-t helped in bmod2, so
+      family = student,
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 42,
+      file = here("salmon/results/bmod3"),
+      file_refit = "on_change")
+
+pp_check(bmod3) # looks good!
+(bmod3_sum <- summary(bmod3)) # nu=7.21; student distribution is helping
+plot(bmod3) # looks good
+conditional_effects(bmod3, "ff_wyd:percentile") # ff matters more early in migr
+
+bmod4 <- 
+  brm(data = ff_data,
+      # within yr obs may not be independent; 
+      # adding random intercept (1|wy) for wy may help
+      wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + (1 | wy),
+      family = student,
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 42,
+      file = here("salmon/results/bmod4"),
+      file_refit = "on_change")
+
+pp_check(bmod4) # looks good!
+(bmod4_sum <- summary(bmod4)) # regional effects emerge more clearly
+plot(bmod4) # looks good
+conditional_effects(bmod4, "ff_wyd:percentile") # dividing the migration into
+# early, mid and late allows us to see there's a real effect of the ff timing
+# albeit primarily on those first, early migrants
+
+# define some priors based earlier model output
+my_priors <- c(
+  prior(normal(150, 50), class = Intercept),
+  prior(normal(0, 1), class = b, coef = ff_wyd),
+  prior(normal(0, 1), class = b, coef = "ff_wyd:percentileday_50"),
+  prior(normal(0, 1), class = b, coef = "ff_wyd:percentileday_90"),
+  prior(normal(0, 2), class = b, coef = wy_meanCentered),
+  prior(normal(0, 30), class = b), # now only hits percentile & region contrasts
+  prior(normal(0, 20), class = sd),
+  prior(exponential(1), class = sigma),
+  prior(gamma(2, 0.1), class = nu)
+)
+
+bmod5 <- brm(
+  data = ff_data,
+  wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + (1 | wy),
+  family = student,
+  prior = my_priors,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  seed = 42,
+  file = here("salmon/results/bmod5"),
+  file_refit = "on_change"
+)
+
+pp_check(bmod5) # looks GREAT
+pp_check(bmod5, type = "stat", stat = "mean")
+(bmod5_sum <- summary(bmod5)) # what's going on w S Delta? SJR fish?!
+plot(bmod5) # looks good
+conditional_effects(bmod5, "ff_wyd:percentile")
+
+```
+
+The diagnostics look clean again — all `Rhat` = 1.00, ESS well above 1000, and `nu` well below 10. Adding the random intercept for water year `(1 | wy)` allows some years to be systematically higher or lower in `wd` than the global mean, while sharing information across years via partial pooling. The results look really good, but I think we should add water year type to the model to see if overall water year conditions affect migration timing. This could, for example, affect the tail end of the migration (`day_90`) while having little or no effect on the first 10%.
+
+```{r}
+#| label: ff+wyt
+
+# we're going to have to revise the priors though:
+get_prior(
+  wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + mo(wyt) + (1 | wy),
+  data = ff_data,
+  family = student
+) # this is mostly to ensure that I'm using the right terms
+
+my_priors_bmod6 <- c(
+  prior(normal(150, 50), class = Intercept),
+  prior(normal(0, 1), class = b, coef = ff_wyd),
+  prior(normal(0, 1), class = b, coef = "ff_wyd:percentileday_50"),
+  prior(normal(0, 1), class = b, coef = "ff_wyd:percentileday_90"),
+  prior(normal(0, 2), class = b, coef = wy_meanCentered),
+  prior(normal(0, 30), class = b, coef = mowyt),
+  prior(normal(0, 30), class = b), # percentile & region contrasts
+  prior(normal(0, 20), class = sd),
+  prior(exponential(1), class = sigma),
+  prior(gamma(2, 0.1), class = nu),
+  prior(dirichlet(1), class = simo, coef = mowyt1)
+)
+
+bmod6 <- brm(
+  data = ff_data,
+  # note addition of the monotonic wyt
+  wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + mo(wyt) + (1 | wy),
+  # sample_prior = "only", # run pp_check(bmod6); if ok run without
+  family = student,
+  prior = my_priors_bmod6,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  seed = 42,
+  file = here("salmon/results/bmod6"),
+  file_refit = "on_change"
+)
+
+pp_check(bmod6)
+pp_check(bmod6, type = "stat", stat = "mean")
+(bmod6_sum <- summary(bmod6)) # what's going on w S Delta? SJR fish?!
+plot(bmod6) # looks good
+conditional_effects(bmod6, "ff_wyd:percentile")
+
+bmod5 <- add_criterion(bmod5, "loo")
+bmod6 <- add_criterion(bmod6, "loo")
+loo_compare(bmod5, bmod6)
+
+```
+
+The model including water year type (`bmod6`) showed negligible improvement in predictive accuracy over the simpler model, `bmod5`, (Δelpd = –0.3 ± 0.2), and the water year type coefficient was not credibly different from zero, so we should go with the more parsimonious `bmod5`.
+
+Here's a detailed review of the bmod5 output:
+
+- `Intercept` (101.26, CI \[93.36-109.29\]): This is the expected `wd` for the 10th percentile benchmark in the reference region (Central Delta) at the mean year when `ff_wyd` = 0. Since day 0 of the water year isn't meaningful biologically, treat this more as a mathematical anchor than an interpretable quantity.
+
+- Day of the first flush (`ff_wyd`; 0.21, CI \[0.13-0.29\]): Credibly positive — each day later that first flush occurs, the 10th percentile outmigration benchmark shifts \~0.21 days later. First flush timing matters: a pulse that comes a month late pushes early migrants roughly 6 days later.
+
+- Interactions between first flush timing and the benchmarks:
+
+  - 10th percentile: **+0.21** (the main effect)
+
+  - 50th percentile: 0.21 – 0.15 = **+0.06** (barely a relationship)
+
+  - 90th percentile: 0.21 – 0.23 = **-0.02** (negligible)
+
+- The timing of first flush events clearly affects when the first juvenile migrants reach the Delta. Presumably other factors (water temperature, cumulative flow conditions, individual variation) determine when the bulk of the outmigrants get there.
+
+- Regional effects (`region`) are comparable to results from the first models. The lower Sacramento is about 8 days earlier than the reference region; fish reach the North Delta a little more than 2 days before the Central Delta. Timing for the South Delta can't be distinguished from the reference region. The latter result could be due to missing data for a large number of years, the effect of San Joaquin river fish entering the Delta independently, or both.
+
+- Change over time (`wy_meanCentered`; -0.30, CI \[-0.47--0.12\]): There is a credible temporal trend towards earlier migration.
+
+- sigma (8.56): Smaller than `bmod1` (14.62); confirms that first flush timing adds real explanatory power.
+
+- Bottom line: There has been a shift in the timing of salmon outmigration over this 45 year period, with the first 10% of each year's cohort now reaching the Delta nearly two weeks earlier than the late 1970's. First flush timing is also a credible predictor of *early* outmigration (10th percentile) but not of bulk or late outmigration, as we hypothesized. Outmigration phenology appears to be changing over the long term (decades), but is also strongly affected by year-to-year differences.
+
+Compare model performance.
+
+```{r}
+#| label: pareto-k
+
+models <- 
+  list(bmod1 = bmod1, bmod2 = bmod2, bmod3 = bmod3, bmod4 = bmod4, bmod5 = bmod5, bmod6 = bmod6)
+
+# fit loo for each
+loos <- map(models, loo)
+
+# summary table of k diagnostics per model
+k_summary <- imap_dfr(loos, ~{
+  k <- .x$diagnostics$pareto_k
+  tibble(
+    model     = .y,
+    n_obs     = length(k),
+    k_max     = max(k),
+    n_ok      = sum(k <= 0.5),
+    n_okish   = sum(k > 0.5 & k <= 0.7),
+    n_bad     = sum(k > 0.7 & k <= 1.0),
+    n_veryBad = sum(k > 1.0)
+  )
+})
+print(k_summary)
+
+# detailed table of every observation with k > 0.7
+bad_points <- imap_dfr(loos, ~{
+  k <- .x$diagnostics$pareto_k
+  idx <- which(k > 0.7)
+  tibble(model = .y, obs = idx, pareto_k = k[idx])
+}) |>
+  arrange(desc(pareto_k))
+
+if (nrow(bad_points) == 0) {
+  message("All Pareto k values <= 0.7 across all models.")
+} else {
+  message("Observations with Pareto k > 0.7:")
+  print(bad_points)
+}
+
+```
+
+```{r}
+#| label: loo
+
+
+# loo_compare(loos$bmod1, loos$bmod2, loos$bmod3, loos$bmod4)
+# can't compare all four directly bc unequal sample sizes
+
+loo_compare(loos[c("bmod1", "bmod2")])
+loo_compare(loos[c("bmod3", "bmod4", "bmod5", "bmod6")])
+
+```
+
+Models `bmod2` and `bmod6` outperform their respective alternatives although the differences between `bmod6` and `bmod4` and `bmod5` are insignificant.
+
+### interpretation
+
+While output from the models designed to study the importance of first flush timing on migration phenology are similar, `mbod6` outperformed `bmod5` and `bmod4` so let's work through the output for `mbod6`. The diagnostics look clean again — all Rhat = 1.00, ESS well above 1000. How should we understand these results?
+
+- `Intercept` (101.68, CI \[91.77-11.94\]): This is the expected `wd` for the 10th percentile benchmark in the reference region (Central Delta) at the mean year when `ff_wyd` = 0. Since day 0 of the water year isn't meaningful biologically, treat this more as a mathematical anchor than an interpretable quantity.
+
+- Day of the first flush (`ff_wyd`; 0.21, CI \[0.13-0.30\]): Credibly positive — each day later that first flush occurs, the 10th percentile outmigration benchmark shifts \~0.21 days later. First flush timing matters: a pulse that comes a month late pushes early migrants about 6 days later.
+
+- Interactions between first flush timing and the benchmarks:
+
+  - 10th percentile: **+0.21** (the main effect)
+
+  - 50th percentile: 0.21 – 0.15 = **+0.06** (barely a relationship)
+
+  - 90th percentile: 0.21 – -0.23 = **-0.02** (even less of a relationship)
+
+- The timing of first flush (`ff_wyd`) events clearly impacts when the first juvenile migrants (`percentileday_10`) reach the Delta. Presumably other factors (water temperature, cumulative flow conditions, individual variation) determine when the bulk of the outmigrants get there (`percentileday_50` and `percentileday_90`).
+
+- Regional effects (region) are comparable to results from the earlier models. As expected, salmon reach the upstream regions (lower Sacramento and North Delta) before reaching the Central Delta by about 8 days for the Lower Sacramento and by about 2.5 days for the North Delta. Timing at the South Delta cannot be distinguished from the Central Delta.
+
+- Change over time (`wy_meanCentered`; -0.29, CI \[-0.48--0.11\]): There is a credible temporal trend towards earlier migration, although it's modified by the timing of first flush events.
+
+- `sigma` (8.56): Confirms that first flush timing adds modest but real explanatory power.
+
+- Bottom line: First flush timing is a credible predictor of *early* outmigration (10th percentile) but not of bulk or late outmigration, as we hypothesized. If our goal is to understand what drives timing across the entire season, `ff_wyd` is most relevant for characterizing the vanguard of the run.
+
+### priors
+
+Initially, I accepted the default priors that `brms` employs. These weren't bad – 'flat' for all except for the `intercepts` and for `sigma` where it uses `student_t`, but the tuning done for `bmod6` really improved the model outcome.\
+
+```{r}
+#| label: priors
+#| echo: false
+
+# if you want to see the details...
+prior_summary(bmod1)
+prior_summary(bmod2)
+prior_summary(bmod3)
+prior_summary(bmod4)
+prior_summary(bmod5)
+prior_summary(bmod6)
+
+```
+
+### magnitude
+
+Let's incorporate the magnitude of these first flush events.
+
+```{r}
+#| label: ff-magnitude
+
+# flow data includes big numbers; best to standardize this variable
+ff_data <- ff_data %>% mutate(flow_scaled = scale(total_flow))
+
+# now let's add this to the model; this just with the default priors bc my efforts earlier really didn't improve things
+bmod7 <- brm(
+  data = ff_data,
+  # note addition of 3-way interaction
+  wd ~ 1 + ff_wyd * flow_scaled * percentile + region + wy_meanCentered + (1 | wy),
+  family = student,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  seed = 42,
+  file = here("salmon/results/bmod7"),
+  file_refit = "on_change"
+)
+
+prior_summary(bmod7)
+pp_check(bmod7) # looks good
+plot(bmod7) # SAC isn't a player!
+summary(bmod7)
+
+bmod7a <- brm(
+  data = ff_data %>% 
+    # exclude tail end of the migration
+    filter(percentile != "day_90"),
+  # timing only; baseline model
+  wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + (1 | wy),
+  family = student,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  seed = 42,
+  file = here("salmon/results/bmod7a"),
+  file_refit = "on_change"
+)
+pp_check(bmod7a) # looks good
+plot(bmod7a)
+summary(bmod7a)
+
+bmod7b <- brm(
+  data = ff_data %>% 
+    # exclude tail end of the migration
+    filter(percentile != "day_90"),
+  # with 3-way interaction
+  wd ~ 1 + ff_wyd * flow_scaled * percentile + region + wy_meanCentered + (1 | wy),
+  family = student,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  seed = 42,
+  file = here("salmon/results/bmod7b"),
+  file_refit = "on_change"
+)
+pp_check(bmod7b)
+plot(bmod7b) # looks super good
+summary(bmod7b)
+
+bmod7 <- add_criterion(bmod7, "loo")
+bmod7a <- add_criterion(bmod7a, "loo")
+bmod7b <- add_criterion(bmod7b, "loo")
+loo_compare(bmod7a, bmod7b)
+
+```
+
+## next steps
+
+Can I look at this for WR only? Include other LAD-based run designations?
+
+Try the mixed effects modeling approach that Jereme recommended.
+
+What happens if I limit the data to genetically-typed salmon but with (necessarily) reduced time series?
+
+Need to consider finer spatial scales: what do accumulation curves for individual sites look like?
+
+What about including the whole year and limiting the time series to post-1992 (or thereabouts)?
+
+Surely there is an applicable metric for the magnitude of a first flush event. Include that in one of these models!
+
+Does the size of outmigrating salmon change over the course of the year? Is that affected by environmental factors (e.g., maybe the size of the first 10% increases when the timing is pushed later in the season)?
+
+What about other salmon data sources (eg trawls from Chipps Island)? What about other fish species?

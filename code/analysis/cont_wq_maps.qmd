@@ -31,7 +31,10 @@ conflicts_prefer(dplyr::filter())
 
 ```{r}
 # Import continuous WQ station coordinates
-sf_stations <- read_sf(here("data/processed/spatial/cont_wq_stations.shp"))
+sf_stations <- read_sf(
+  here("data/processed/spatial/first_flush_spatial_data.gpkg"),
+  layer = "cont_wq_stations"
+)
 
 # Import continuous WQ station metadata
 df_metadata <- readRDS(here("data/processed/wq/cont_wq_metadata.rds"))
@@ -42,8 +45,13 @@ sf_stations_c1 <- sf_stations %>%
   relocate(Station_Name, .after = Station_ID) %>%
   mutate(across(where(is.POSIXct), \(x) format(x, "%Y-%m-%d")))
 
-# Import regions shapefile
-sf_regions <- read_sf(here("data/processed/spatial/delta_regions.shp"))
+# Import Region polygons
+sf_regions <-
+  read_sf(
+    here("data/processed/spatial/first_flush_spatial_data.gpkg"),
+    layer = "design_regions"
+  ) |>
+  filter(Region != "Out of Bounds")
 
 # Create color palettes for station points (using Source) and region polygons
 pal_stations <- plasma(n = length(unique(sf_stations_c1$Source)))
@@ -73,7 +81,8 @@ ndf_maps <- sf_stations_c1 %>%
             zcol = "Region",
             col.regions = pal_regions,
             layer.name = "Region",
-            alpha.regions = 0.4
+            alpha.regions = 0.4,
+            legend = FALSE
           )
       }
     )
@@ -86,7 +95,6 @@ ndf_maps <- sf_stations_c1 %>%
 
 ```{r}
 #| echo: false
-
 ndf_maps$maps[[1]]
 ```
 
@@ -94,7 +102,6 @@ ndf_maps$maps[[1]]
 
 ```{r}
 #| echo: false
-
 ndf_maps$maps[[2]]
 ```
 
@@ -102,7 +109,6 @@ ndf_maps$maps[[2]]
 
 ```{r}
 #| echo: false
-
 ndf_maps$maps[[3]]
 ```
 
@@ -110,7 +116,6 @@ ndf_maps$maps[[3]]
 
 ```{r}
 #| echo: false
-
 ndf_maps$maps[[4]]
 ```
 
@@ -118,7 +123,6 @@ ndf_maps$maps[[4]]
 
 ```{r}
 #| echo: false
-
 ndf_maps$maps[[5]]
 ```
 
@@ -126,7 +130,6 @@ ndf_maps$maps[[5]]
 
 ```{r}
 #| echo: false
-
 ndf_maps$maps[[6]]
 ```
 
@@ -134,8 +137,28 @@ ndf_maps$maps[[6]]
 
 ```{r}
 #| echo: false
-
 ndf_maps$maps[[7]]
+```
+
+## `r ndf_maps$Parameter[8]`
+
+```{r}
+#| echo: false
+ndf_maps$maps[[8]]
+```
+
+## `r ndf_maps$Parameter[9]`
+
+```{r}
+#| echo: false
+ndf_maps$maps[[9]]
+```
+
+## `r ndf_maps$Parameter[10]`
+
+```{r}
+#| echo: false
+ndf_maps$maps[[10]]
 ```
 
 :::
@@ -145,41 +168,10 @@ ndf_maps$maps[[7]]
 ```{r}
 sf_stations_c1 %>%
   st_drop_geometry() %>%
-  select(-c(Station_ID, SubRegion, CDEC_ID)) %>%
+  select(-c(Station_ID, CDEC_ID)) %>%
   mutate(
     across(c(Start, End), ymd),
     across(c(Source, Region, Parameter, Interval), factor)
   ) %>%
   datatable(filter = "top")
-```
-
-# Turbidity Stations
-
-```{r}
-df_stations_analysis <- readRDS(
-  here("data/processed/wq/cont_wq_station_info_analysis.rds")
-)
-
-df_turbidity <- readRDS(here("data/processed/wq/turbidity_dv.rds"))
-
-# Convert to sf object, assume all coordinates are in WGS84
-sf_stations_analysis <- df_stations_analysis |>
-  filter(station_abbr %in% unique(df_turbidity$station_abbr)) |>
-  st_as_sf(coords = c("longitude", "latitude"), crs = 4326)
-
-sf_stations_analysis |>
-  mapview(
-    zcol = "data_source",
-    col.regions = pal_stations[c(1, 3, 5)],
-    label = "station_full_name",
-    layer.name = "Source",
-    cex = 5
-  ) +
-  mapview(
-    sf_regions,
-    zcol = "Region",
-    col.regions = pal_regions,
-    layer.name = "Region",
-    alpha.regions = 0.4
-  )
 ```

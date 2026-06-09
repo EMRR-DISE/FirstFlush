@@ -21,10 +21,14 @@ library(hydrostats)
 library(envPred)
 library(readxl)
 library(EflowStats)
+library(dataRetrieval)
+library(slider)
 
 ```
 
 ## data
+
+The data used here ('dayflow.xlsx') were downloaded from <https://data.cnra.ca.gov/dataset/dayflow> using the 'Export' link (select 'CSV'), and compiled from 1970-1983, 1984-1996, 1997-2023, 2024, and 2025 (completed 16 April 2026). Meta data are available here: <https://data.cnra.ca.gov/dataset/06ee2016-b138-47d7-9e85-f46fae674536/resource/776b90ca-673e-4b56-8cf3-ec26792708c3/download/current-dayflow-documentation.pdf> These data include flow measurements from multiple systems; I've selected the 'SAC' data specifically below. The SAC data for the Sacramento River are from USGS AVM monitoring and stream gage data, DWR Station Numbers B9-1840 (Freeport) and A0-2100 (Sacramento) and USGS Station Numbers 11-4467.50 and 11-4475.00.
 
 ```{r}
 #| label: dayflow
@@ -41,6 +45,22 @@ flow_df$Date <- as.Date(flow_df$Date)
 
 ## magnificent 7
 
+The 'Magnificent 7' are seven fundamental daily streamflow statistics (FDSS) used to characterize natural flow regimes and streamflow time series (see [@archfield2014], and references therein). These are:
+
+1.  Mean flow \[lam1\]
+
+2.  Coefficient of Variation (flow variability) \[tau2\]
+
+3.  Skewness (asymmetry of the flow distribution) \[tau3\]
+
+4.  Kurtosis (peakedness of the distribution) \[tau4\]
+
+5.  Autoregressive Lag-One Correlation Coefficientn (AR(1)) (persistence or duration) \[ar1\]
+
+6.  Amplitude (of seasonal signal) \[amplitude\]
+
+7.  Phase/Timing (of seasonal signal) \[phase\]
+
 ```{r}
 #| label: mag-7
 
@@ -56,7 +76,7 @@ print(m7)
 
 The first four indices (`lam1` through `tau4`) use "L-moments," more robust versions of standard statistics like Mean and Skewness.
 
-- **`lam1` (22,690.48):** This is the *mean daily flow* (cfs) at this location.
+- **`lam1` (22,690.48):** This is the *mean daily flow* (cfs) for the lower Sacramento River.
 
 - **`tau2` (0.38):** This is the *L-Coefficient of Variation*. A value of 0.38 indicates moderate variability. It’s not a steady canal, but it’s also not a "flashy" desert stream (\> 0.6).
 
@@ -70,9 +90,48 @@ The first four indices (`lam1` through `tau4`) use "L-moments," more robust vers
 
 - **`amplitude` (0.630):** This is the *seasonal signal strength*. With a fairly high value—closer to 1 than 0--, this is indicative of a strong seasonal cycle (i.e., winter rain and spring snowmelt).
 
-- **`phase` (61.358):** This is the *seasonal timing* (in days). A value of ca. 61 indicates that the peak of the seasonal "wave" occurs roughly 61 days into the water year (early December).
+- **`phase` (61.358):** This is the *seasonal timing* (in the numerical day of the water year). A value of ca. 61 indicates that the peak of the seasonal "wave" occurs roughly 61 days into the water year (November 30).
 
 These results show a **large, highly predictable, highly persistent river** that is prone to **large, infrequent flood spikes** (high skewness).
+
+When does the peak seasonal flow occur for each year in our time series?
+
+```{r}
+#| label: peak-flow
+
+peak_flow <-
+  flow_df %>% 
+  # add the water year (wy)
+  mutate(wy = get_waterYear(Date)) %>% 
+  group_by(wy) %>% 
+  # find the day with the max flow
+  filter(SAC == max(SAC, na.rm = T)) %>% 
+  # calc day of water year when peak flow occurred
+  mutate(peak_day = as.numeric(Date - as.Date(paste0(wy - 1, "-10-01"))) + 1) %>%
+  select(wy, Date, peak_day, SAC)
+
+peak_flow %>% 
+  ggplot(aes(x = wy, y = peak_day)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = T, color = "blue") +
+  theme_bw()
+
+m1.peak <-
+  brm(data = peak_flow,
+    peak_day ~ wy,
+    family = gaussian,
+    prior(normal(0, 25)),
+    iter = 2000,
+    warmup = 1000,
+    chains = 4,
+    cores = 4,
+    seed = 42
+    )
+
+print(m1.peak)
+plot(m1.peak)
+
+```
 
 ## environmental predictability
 
@@ -163,11 +222,91 @@ sac_beast <-
 print(sac_beast)
 saveRDS(sac_beast, here("salmon/results/sac_beast.rds"))
 
+sac_beast <-
+  read_rds(here("salmon/results/sac_beast.rds"))
+
 plot(sac_beast)
 
 pdf("salmon/plots/SacR_ts.pdf", width = 11, height = 8.5)
 plot(sac_beast)
 
 # png("salmon/plots/SacR_ts.png", width = 2400, height = 1800, res = 300)
+
+```
+
+## first flush
+
+Identifying peak flow events.
+
+```{r}
+
+peaks <- flow_df %>% 
+  arrange(Date) %>% 
+  mutate(
+    # calc 3-day moving average
+    ma3 = slide_dbl(SAC, mean, .before = 2, .complete = T),
+    # daily change in the 3-day average
+    ma3_diff = ma3 - lag(ma3),
+    # define condition: change >= 2% of the change
+    is_condition_met = ifelse(ma3_diff > 0, TRUE, FALSE),
+    # rising flows for at least 4 days
+    streak = slide_dbl(is_condition_met, sum, .before = 3, .complete = T),
+    is_event_start = streak == 4
+  )
+
+peaks %>% 
+  ggplot(aes(x = Date, y = SAC)) +
+  geom_line() +
+  theme_bw()
+
+peaks %>% 
+  filter(year(Date) >= 1970 & year(Date) < 1980) %>% 
+  ggplot(aes(x = Date, y = SAC)) +
+  geom_line(color = "blue") +
+  theme_bw()
+
+peaks %>% 
+  filter(Date >= "2024-10-01" & Date <= "2025-09-30") %>% 
+  ggplot(aes(x = Date, y = SAC)) +
+  geom_line(color = "gray", alpha = 0.5) +
+  geom_line(aes(color = is_condition_met, group = 1), linewidth = 1) +
+  scale_color_manual(
+    values = c("TRUE" = "blue", "FALSE" = "green"),
+    labels = c("TRUE" = "Rising", "FALSE" = "Descending"),
+    name = "flow phase"
+  ) +
+  theme_bw()
+
+
+# Assuming your dataframe is 'df' with columns 'Date' and 'SAC'
+df_plotted <- flow_df %>%
+  arrange(Date) %>%
+  mutate(
+    # Rising logic: >10% over 3 days
+    pct_change_3d = (SAC - lag(SAC, 3)) / lag(SAC, 3),
+    # Descending logic: >2% decrease (<-0.02) over 1 day
+    pct_change_1d = (SAC - lag(SAC, 1)) / lag(SAC, 1),
+    
+    # Assign Limb Status
+    limb_type = case_when(
+      pct_change_3d > 0.10 ~ "Rising",
+      pct_change_1d < -0.02 ~ "Descending",
+      TRUE ~ "Stable"
+    )
+  )
+
+# Plotting with segments to color the line itself
+df_plotted %>% 
+  filter(Date >= "2024-10-01") %>% 
+ggplot(aes(x = Date, y = SAC, color = limb_type, group = 1)) +
+  geom_line(size = 1) +
+  scale_color_manual(values = c("Rising" = "red", 
+                                "Descending" = "blue", 
+                                "Stable" = "grey")) +
+  theme_minimal() +
+  labs(title = "Sacramento River Hydrograph Limbs",
+       y = "Discharge (cfs)",
+       color = "Limb Status")
+
 
 ```

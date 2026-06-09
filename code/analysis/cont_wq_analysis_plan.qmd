@@ -5,6 +5,8 @@ date: today
 date-format: long
 format:
   html:
+    toc: true
+    toc-expand: true
     code-fold: true
     code-tools: true
 execute:
@@ -12,36 +14,360 @@ execute:
   warning: false
 ---
 
+```{r}
+# Load packages
+library(tidyverse)
+library(viridisLite)
+library(khroma)
+library(sf)
+library(mapview)
+library(DT)
+library(here)
+library(conflicted)
+
+# Declare package conflict preferences
+conflicts_prefer(dplyr::filter())
+```
+
 # WQ Hypotheses
 
 1. Turbidity will increase faster and higher during a first flush event compared to later storm events.
 2. Salinity will decrease more dramatically during first flush compared with other storms.
 3. Dissolved oxygen will decrease during first flush but recover afterwards.
 4. Chlorophyll will decrease more during first flush and stays low during later storm events.
+5. Do we need a water temperature hypothesis
+6. Other parameters we are interested in?
+
+# Questions for Group
+
+1. Which stations and parameters to include?
+
+    Stations, parameters and periods of record:
+
+- North Delta Region:
+    - **USGS Sacramento River at Freeport (11447650)**
+        - 15-min Discharge: 2007-current
+        - Tidally-filtered Discharge (15-min and daily mean): 2015-current
+        - 15-min Mean Water Velocity: 2015-current
+        - Daily Mean Water Temperature: 1972-2023
+        - 15-min Water Temperature: 2007-current
+        - 15-min Specific Conductance: 2013-current
+        - 15-min Dissolved Oxygen: 2013-current
+        - **15-min Turbidity: 2009-current**
+        - **Daily Mean Suspended Sediment Concentration: 1956-2023**
+        - 15-min Chlorophyll: 2013-current
+    - *DWR-CEMP Sacramento River at Hood (SRH)?*
+        - 15-min Water Temperature: 2008-2025
+        - 15-min Specific Conductance: 2008-2025
+        - 15-min Dissolved Oxygen: 2008-2025
+        - 15-min Turbidity: 2008-2025
+        - 15-min Chlorophyll: 2008-2025
+    - *USGS Sacramento River below Georgiana Slough (11447905)?*
+        - 15-min Discharge: 1993-current
+        - Tidally-filtered Discharge (15-min and daily mean): 1993-current
+        - 15-min Mean Water Velocity: 2007-current
+        - 15-min Water Temperature: 2009-2025
+        - 15-min Specific Conductance: 2009-2025
+        - 15-min Turbidity: 2009-2025
+    - *USGS Sacramento River above Delta Cross Channel (11447890)?*
+        - 15-min Discharge: 1992-current
+        - Tidally-filtered Discharge (15-min and daily mean): 1992-current
+        - 15-min Mean Water Velocity: 2007-current
+        - 15-min Water Temperature: 2013-2025
+        - 15-min Specific Conductance: 2013-2025
+        - 15-min Dissolved Oxygen: 2013-2025
+        - 15-min Turbidity: 2013-2025
+        - 15-min Chlorophyll: 2014-2025
+    - *Cache Slough stations?*
+- South Delta and Mokelumne River
+    - **DWR-CEMP San Joaquin River at Prisoners Point (PPT)**
+        - 15-min Water Temperature: 2008-2025
+        - 15-min Specific Conductance: 2008-2025
+        - 15-min Dissolved Oxygen: 2008-2025
+        - **15-min Turbidity: 2008-2025**
+        - 15-min Chlorophyll: 2008-2025
+    - *USGS San Joaquin River at Prisoners Point near Terminous (11313460)*
+        - 15-min Discharge: 2006-2025
+        - Tidally-filtered Discharge (15-min and daily mean): 2006-2025
+        - 15-min Mean Water Velocity: 2007-2025
+    - **DWR-NCRO (WQES) Old River at Quimby Island near Bethel Island (B9520000)**
+        - 15-min Water Temperature: 2005-current
+        - 15-min Specific Conductance: 2005-current
+        - **15-min Turbidity: 2009-current**
+    - *USGS Old River at Quimby Island near Bethel Island (11313434)*
+        - 15-min Discharge: 2006-2025
+        - Tidally-filtered Discharge (15-min and daily mean): 2006-2025
+        - 15-min Mean Water Velocity: 2007-2025
+    - **DWR-NCRO (WQES) Middle River near Holt (B9545800)**
+        - 15-min Water Temperature: 2006-current
+        - 15-min Specific Conductance: 2006-current
+        - **15-min Turbidity: 2009-current**
+        - 15-min Chlorophyll: 2010-2025
+    - *USGS Middle River near Holt (11312685)*
+        - 15-min Discharge: 2006-2025
+        - Tidally-filtered Discharge (15-min and daily mean): 2006-2025
+        - 15-min Mean Water Velocity: 2007-2025
+    - **DWR-NCRO (WQES) OBI at USGS Pile (B9525100)**
+        - 15-min Water Temperature: 2008-current
+        - 15-min Specific Conductance: 2008-current
+        - 15-min Dissolved Oxygen: 2022-current
+        - **15-min Turbidity: 2008-current**
+        - 15-min Chlorophyll: 2022-current
+    - *USGS Old River at Bacon Island (11313405)*
+        - 15-min Discharge: 1987-current
+        - Tidally-filtered Discharge (15-min and daily mean): 1987-current
+        - 15-min Mean Water Velocity: 2007-current
+    - **USGS Middle River at Middle River (11312676)**
+        - 15-min Discharge: 1987-current
+        - Tidally-filtered Discharge (15-min and daily mean): 1987-current
+        - 15-min Mean Water Velocity: 2023-current
+        - 15-min Water Temperature: 2009-2025
+        - 15-min Specific Conductance: 2009-2025
+        - 15-min Dissolved Oxygen: 2019-2025
+        - **15-min Turbidity: 2009-2025**
+        - 15-min Chlorophyll: 2023-2025
+    - **USGS Old River near Byron (11313315)**
+        - 15-min Discharge: 1999-current
+        - Tidally-filtered Discharge (15-min and daily mean): 1999-current
+        - 15-min Mean Water Velocity: 2007-current
+        - 15-min Water Temperature: 2009-2025
+        - 15-min Specific Conductance: 2009-2025
+        - **15-min Turbidity: 2009-2025**
+    - **DWR-NCRO (WQES) Grant Line Canal near Clifton Court Forebay (B9529500)**
+        - 15-min Water Temperature: 2007-current
+        - 15-min Specific Conductance: 2007-current
+        - 15-min Dissolved Oxygen: 2007-current
+        - **15-min Turbidity: 2007-current**
+        - 15-min Chlorophyll: 2007-current
+    - *USGS Grant Line Canal near Tracy (11313240)*
+        - 15-min Discharge: 2005-current
+        - Tidally-filtered Discharge (15-min and daily mean): 2005-current
+        - 15-min Mean Water Velocity: 2007-current
+    - **DWR-NCRO (WQES) Old River at Tracy Wildlife Association (B9537800)**
+        - 15-min Water Temperature: 1999-current
+        - 15-min Specific Conductance: 1999-current
+        - 15-min Dissolved Oxygen: 1999-current
+        - **15-min Turbidity: 1999-current**
+        - 15-min Chlorophyll: 2005-current
+    - *DWR-NCRO (Flow) Old River near Tracy Blvd Bridge (B95380Q)*
+        - 15-min Discharge: 2011-current
+        - 15-min Mean Water Velocity: 2011-current
+    - *DWR-CEMP San Joaquin River at Mossdale Bridge (MSD)?*
+        - 15-min Water Temperature: 2007-2025
+        - 15-min Specific Conductance: 2007-2025
+        - 15-min Dissolved Oxygen: 2007-2025
+        - 15-min Turbidity: 2007-2025
+        - 15-min Chlorophyll: 2007-2025
+    - *DWR-NCRO (Flow) San Joaquin River at Mossdale (B95820Q)?*
+        - 15-min Discharge: 2005-current
+        - 15-min Mean Water Velocity: 2005-current
+    - *USGS San Joaquin River below Garwood Bridge at Stockton (11304810)?*
+        - 15-min Discharge: 1995-2025
+        - Tidally-filtered Discharge (15-min and daily mean): 1995-2025
+        - 15-min Mean Water Velocity: 2005-2025
+        - 15-min Water Temperature: 2009-2025
+        - 15-min Specific Conductance: 2009-2025
+        - 15-min Turbidity: 2009-2025
+    - *Mokelumne River stations?*
+- Confluence
+    - **DWR-CEMP Sacramento River at Rio Vista Bridge (RVB)**
+        - 15-min Water Temperature: 2008-2025
+        - 15-min Specific Conductance: 2008-2025
+        - 15-min Dissolved Oxygen: 2008-2025
+        - **15-min Turbidity: 2008-2025**
+        - 15-min Chlorophyll: 2008-2025
+    - *USGS Sacramento River at Rio Vista (11455420)*
+        - 15-min Discharge: 1995-current
+        - Tidally-filtered Discharge (15-min and daily mean): 1995-current
+        - 15-min Mean Water Velocity: 2007-current
+    - **USGS San Joaquin River at Jersey Point (11337190)**
+        - 15-min Discharge: 1994-current
+        - Tidally-filtered Discharge (15-min and daily mean): 1994-current
+        - 15-min Mean Water Velocity: 2007-current
+        - 15-min Water Temperature: 2009-2025
+        - 15-min Specific Conductance: 2009-2025
+        - 15-min Dissolved Oxygen: 2014-2025
+        - **15-min Turbidity: 2009-2025**
+        - 15-min Chlorophyll: 2016-2025
+    - *DWR-CEMP Sacramento River at Chipps Island (MAL)?*
+        - 15-min Water Temperature: 2008-2025
+        - 15-min Specific Conductance: 2008-2025
+        - 15-min Dissolved Oxygen: 2008-2025
+        - 15-min Turbidity: 2008-2025
+        - 15-min Chlorophyll: 2008-2025
+- Suisun Bay and Marsh and Honker Bay
+    - - *DWR-CEMP Honker Bay near Wheeler Point (HON)?*
+        - 15-min Water Temperature: 2015-2025
+        - 15-min Specific Conductance: 2015-2025
+        - 15-min Dissolved Oxygen: 2015-2025
+        - 15-min Turbidity: 2015-2025
+        - 15-min Chlorophyll: 2015-2025
+    - *DWR-CEMP Suisun Bay off Middle Point near Nichols (RYC)?*
+        - 15-min Water Temperature: 2015-2025
+        - 15-min Specific Conductance: 2015-2025
+        - 15-min Dissolved Oxygen: 2015-2025
+        - 15-min Turbidity: 2015-2025
+        - 15-min Chlorophyll: 2015-2025
+    - *DWR-CEMP Grizzly Bay at Dolphin near Suisun Slough (GZL)?*
+        - 15-min Water Temperature: 2015-2025
+        - 15-min Specific Conductance: 2015-2025
+        - 15-min Dissolved Oxygen: 2015-2025
+        - 15-min Turbidity: 2015-2025
+        - 15-min Chlorophyll: 2015-2025
+    - *Montezuma Slough?*
+- Out of bounds
+    - **DWR-CEMP San Joaquin River McCune Station near Vernalis (SJR)**
+        - 15-min Water Temperature: 2005-2025
+        - 15-min Specific Conductance: 2005-2025
+        - 15-min Dissolved Oxygen: 2005-2025
+        - **15-min Turbidity: 2005-2025**
+        - 15-min Chlorophyll: 2005-2025
+    - **USGS San Joaquin River near Vernalis (11303500)**
+        - Daily Mean Discharge: 1923-current
+        - 15-min Discharge: 1986-current
+        - Daily Mean Water Temperature: 1972-2023
+        - 15-min Water Temperature: 2007-current
+        - **Daily Mean Suspended Sediment Concentration: 1956-2023**
+    - *DWR-O&M Clifton Court Forebay (CLC)?*
+        - Daily Water Temperature: 1988-current
+        - Daily Specific Conductance: 1987-current
+        - Daily Turbidity (NTU): 1988-current
+        - Daily Chlorophyll Fluorescence: 1988-current
+
+## Map
+
+```{r}
+# Import continuous WQ station coordinates
+sf_stations <- read_sf(
+  here("data/processed/spatial/first_flush_spatial_data.gpkg"),
+  layer = "cont_wq_stations"
+)
+
+# Import continuous WQ station metadata
+df_metadata <- readRDS(here("data/processed/wq/cont_wq_metadata.rds"))
+
+# Add station names to station coordinates
+sf_stations_c1 <- sf_stations %>%
+  left_join(df_metadata, by = join_by(Source, Station_ID)) %>%
+  relocate(Station_Name, .after = Station_ID) |>
+  mutate(across(where(is.POSIXct), date))
+
+# Define stations in consideration
+df_stations_analysis <- tribble(
+  ~Source         , ~Station_ID     ,
+  "USGS"          , "USGS-11447650" ,
+  "DWR-CEMP"      , "SRH"           ,
+  "USGS"          , "USGS-11447905" ,
+  "USGS"          , "USGS-11447890" ,
+  "DWR-CEMP"      , "PPT"           ,
+  "USGS"          , "USGS-11313460" ,
+  "DWR-NCRO (WQ)" , "B9520000"      ,
+  "USGS"          , "USGS-11313434" ,
+  "DWR-NCRO (WQ)" , "B9545800"      ,
+  "USGS"          , "USGS-11312685" ,
+  "DWR-NCRO (WQ)" , "B9525100"      ,
+  "USGS"          , "USGS-11313405" ,
+  "USGS"          , "USGS-11312676" ,
+  "USGS"          , "USGS-11313315" ,
+  "DWR-NCRO (WQ)" , "B9529500"      ,
+  "USGS"          , "USGS-11313240" ,
+  "DWR-NCRO (WQ)" , "B9537800"      ,
+  "DWR-CEMP"      , "MSD"           ,
+  "USGS"          , "USGS-11304810" ,
+  "DWR-CEMP"      , "RVB"           ,
+  "USGS"          , "USGS-11455420" ,
+  "USGS"          , "USGS-11337190" ,
+  "DWR-CEMP"      , "MAL"           ,
+  "DWR-CEMP"      , "HON"           ,
+  "DWR-CEMP"      , "RYC"           ,
+  "DWR-CEMP"      , "GZL"           ,
+  "DWR-CEMP"      , "SJR"           ,
+  "USGS"          , "USGS-11303500"
+)
+
+# Filter to stations in consideration
+sf_stations_c2 <- sf_stations_c1 |>
+  right_join(df_stations_analysis, by = join_by(Source, Station_ID))
+
+# Add info for CLC station
+sf_clc <-
+  tibble(
+    Parameter = c(
+      "Water Temperature",
+      "Specific Conductance",
+      "Turbidity (NTU)",
+      "Chlorophyll Fluorescence"
+    ),
+    Start = ymd(c("1988-03-04", "1987-01-01", "1988-03-10", "1988-03-07"))
+  ) |>
+  expand_grid(
+    Source = "DWR-O&M",
+    Station_ID = "CLC",
+    Station_Name = "Clifton Court Forebay",
+    Latitude = 37.829800,
+    Longitude = -121.557400,
+    Interval = "Daily",
+    End = ymd(today())
+  ) |>
+  st_as_sf(
+    coords = c("Longitude", "Latitude"),
+    crs = 4326,
+    sf_column_name = "geom"
+  )
+
+sf_stations_c3 <-
+  bind_rows(sf_stations_c2, sf_clc) |>
+  mutate(Region = replace_na(Region, "Out of Bounds"))
+
+# Import Region polygons
+sf_regions <-
+  read_sf(
+    here("data/processed/spatial/first_flush_spatial_data.gpkg"),
+    layer = "design_regions"
+  ) |>
+  filter(Region != "Out of Bounds")
+
+# Create color palettes for station points (using Source) and region polygons
+pal_stations <- plasma(n = length(unique(sf_stations_c3$Source)))
+pal_regions <- color("muted")(length(unique(sf_regions$Region)))
+
+sf_stations_c3 |>
+  distinct(Source, Station_ID, Station_Name, Region, geom) |>
+  mapview(
+    zcol = "Source",
+    col.regions = pal_stations,
+    label = "Station_Name",
+    layer.name = "Source",
+    cex = 5
+  ) +
+  mapview(
+    sf_regions,
+    zcol = "Region",
+    col.regions = pal_regions,
+    layer.name = "Region",
+    alpha.regions = 0.4,
+    legend = FALSE
+  )
+```
+
+## Station Metadata
+
+```{r}
+sf_stations_c3 %>%
+  st_drop_geometry() %>%
+  select(-c(Station_ID, CDEC_ID)) %>%
+  mutate(across(c(Source, Region), factor)) %>%
+  datatable(filter = "top")
+```
 
 # Data Exploration
 
 1. Visual exploration of WQ time-series in relation to storm events at select stations
 
-    Stations:
-
-    - USGS Sacramento River at Freeport (11447650)
-    - DWR_CEMP San Joaquin River McCune Station near Vernalis (SJR)
-    - DWR_CEMP Sacramento River at Rio Vista Bridge (RVB)
-    - USGS San Joaquin River at Jersey Point (11337190)
-    - DWR_CEMP San Joaquin River at Prisoners Point (PPT)
-    - DWR-NCRO (WQES) Old River at Quimby Island near Bethel Island (B9520000)
-    - DWR-NCRO (WQES) Middle River near Holt (B9545800)
-    - DWR-NCRO (WQES) OBI at USGS Pile (B9525100)
-    - USGS Middle River at Middle River (11312676)
-    - USGS Old River near Byron (11313315)
-    - DWR-NCRO (WQES) Grant Line Canal near Clifton Court Forebay (B9529500)
-    - DWR-NCRO (WQES) Old River at Tracy Wildlife Association (B9537800)
-
     a. Turbidity - most stations started around 2010
         i. Increases in relation to storm events.
-        ii. Is it typically highest after first event of the year? Maybe look at rate or difference (pre vs. during) instead of raw values.
-        iii. How does turbidity increase downstream of SR at Freeport? Similar patterns, raw values, lag in response.
+        ii. Is it typically highest after first event of the year? *Maybe visualize the rate of change or difference in addition to raw values.*
+        iii. How does turbidity increase downstream of SR at Freeport? Similar patterns? Is there a lag in response?
         iv. Sacramento River vs. San Joaquin River - how do they compare? How often are storms occurring system-wide vs. in just one watershed?
     b. Salinity
     c. Dissolved Oxygen
@@ -52,13 +378,19 @@ execute:
 # Metrics
 
 1. Turbidity
-    a. temporal rate of increase or raw difference (before vs. during storm)
-    b. time lags at downstream stations (days between first day of storm and turbidity maximum)
-    c. spatial extent of turbidity increase
-    d. gradient calculations between SR and SJR influenced stations
+    a. Turbidity maxima after the onset of each storm
+    b. Days between first day of storm and turbidity maxima (could help define time lags at downstream stations)
+    c. Temporal rate of increase or raw difference (~1 week before storm vs. during storm at its peak)
+    d. Spatial extent of turbidity increase (maybe use representative stations in each region to identify whether it increased in that area). Summarize this in some useful way.
+    e. Gradient calculations between SR and SJR influenced stations
+    f. Compare before (~1 week before storm) to during/after (~1 week after storm) for each storm grouped by region
+    g. Some metrics to look at duration of elevated turbidity events in relation to storm events
 2. Salinity
+    a. Compare before (~1 week before storm) to during/after (~1 week after storm) for each storm grouped by region
 3. Dissolved Oxygen
+    a. Compare before (~1 week before storm) to during/after (~1 week after storm) for each storm grouped by region
 4. Chlorophyll
+    a. Compare before (~1 week before storm) to during/after (~1 week after storm) for each storm grouped by region
 
 # Statistical Analyses
 

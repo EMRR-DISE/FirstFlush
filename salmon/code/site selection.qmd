@@ -1,0 +1,613 @@
+---
+title: "beach seine sites"
+author: "Pete Nelson"
+editor: visual
+---
+
+# tidy beach seine data
+
+The beach seine data, as downloaded from EDI and using their code, has some issues with variable type and naming. This code addresses these issues and saves the beach seine data as `raw.rds`.
+
+```{r}
+#| label: tidy-data
+#| message: false
+#| warning: false
+
+library(janitor)
+library(here)
+library(chron)
+library(gridExtra)
+library(sf)
+library(tigris)
+library(nhdplusTools)
+library(tidyverse)
+
+raw <- 
+  read_rds(here("salmon/data/raw/dt3.rds")) %>% 
+  # provide good names
+  clean_names() %>% 
+  # chng region & station to chr (factors interfere w regularization later)
+  # fix date & time variables, originally as chr
+  mutate(region = as.character(region_code),
+         station = as.character(station_code),
+         date = mdy(sample_date),
+         time = times(sample_time),
+         .keep = "unused") %>% 
+  # generate a sample unit (unique seine event) code
+  group_by(station, date, time) %>% 
+  mutate(id_code = cur_group_id()) %>% 
+  relocate(id_code, station, location, date, time) %>% 
+  ungroup() %>% 
+  write_rds(., here("salmon/data/raw/raw.rds"))
+
+```
+
+# check data quality
+
+Run some quick checks on methodological and environmental data. The high values for specific_conductance appear to be from SF Bay (ie where you'd expect to find high values).
+
+```{r}
+#| label: data-qc
+#| message: false
+#| warning: false
+
+# estimated volume of the seine effort
+vol <- ggplot(raw,
+              aes(volume)) +
+  geom_histogram()
+
+# water temperature (deg C)
+temperature <-
+  ggplot(raw,
+         aes(water_temp)) +
+  geom_histogram()
+
+# turbidity
+turb <-
+  ggplot(raw,
+         aes(turbidity)) +
+  geom_histogram()
+
+# specific conductance
+cond <-
+  ggplot(raw,
+         aes(specific_conductance)) +
+  geom_histogram()
+
+# arrange graphs
+grid.arrange(vol, temperature, turb, cond, ncol = 2, nrow = 2)
+
+rm(vol, temperature, turb, cond)
+
+```
+
+# effort
+
+Regularize the time series, and identify the months for which each site was sampled and *not* sampled. Add descriptions for regions. The file `coverage.rds` is a regularized time series showing which station/year/months were and weren't sampled.
+
+```{r}
+#| label: effort
+
+# create monthly coverage indicator and retain region
+# this is an irregular time series-no rows when sites weren't sampled
+coverage_irreg <- raw %>%
+  distinct(
+    station, year = year(date), month = month(date), region) %>%
+  # 'tag' months sampled (thus far, all of them)
+  mutate(sampled = 1)
+
+# create tibble of station and region for later use
+# 1= Lower Sacramento River, 2= North Delta, 3= Central Delta, 4= South Delta, 
+# 5= San Joaquin River, 6= Bay Area, 7= Sacramento River
+sta_reg <-
+  coverage_irreg %>%
+  distinct(station, region) %>%
+  left_join(
+    tibble(
+      region = factor(1:7),
+      region_label = factor(c("Lower Sacramento River", "North Delta", 
+                              "Central Delta", "South Delta",
+                              "San Joaquin River", 
+                              "San Francisco & San Pablo Bays", 
+                              "Sacramento River"))
+    ),
+    by = "region"
+  ) %>% 
+  write_rds(., here("salmon/data/processed/sta_reg.rds"))
+
+# regularize ts
+coverage <-
+  coverage_irreg %>% 
+  # regularize the time series w complete()
+    complete(
+        station,
+        # add missing years
+        year = min(year):max(year),
+        # add missing months
+        month = 1:12,
+        # enter '0' for station/year/months that weren't sampled
+        fill = list(sampled = 0)
+    ) %>% 
+  # add region code for unsampled station/year/months (lost w regularization)
+    rows_patch(sta_reg %>% 
+                 dplyr::select(station, region), by = "station") %>%
+  # add region_label
+    left_join(sta_reg %>% distinct(region, region_label), by = "region") %>% 
+    mutate(
+      month_label = factor(month, levels = 1:12, labels = month.abb),
+      region_label = fct_relevel(
+        region_label, "Sacramento River", "Lower Sacramento River", 
+        "North Delta", "Central Delta",
+        "San Joaquin River", "South Delta", "San Francisco & San Pablo Bays")
+    ) %>% 
+  write_rds(., here("salmon/data/processed/coverage.rds"))
+
+```
+
+# plot
+
+## effort
+
+Plot monthly coverage for all beach sites.
+
+```{r}
+#| label: heat-maps
+
+
+# generate calendar-style heat map 
+# months run horizontally, years vertically
+
+# too many sites to adequately display the information, so divide them between
+# northerly sites and southerly ones
+
+# North Delta effort
+coverage %>% 
+  filter(region_label == "North Delta",
+         year >= 1977) %>% 
+  mutate(month_label = 
+           factor(month, levels = 1:12, labels = month.abb)) %>% 
+  ggplot(aes(month_label, year, fill = factor(sampled))) +
+  geom_tile(color = NA) +
+  facet_wrap(~station) +
+  scale_fill_manual(values = c("0" = "grey95", "1" = "midnightblue"), guide = "none") +
+  labs(
+    x = "Month",
+    y = "Year",
+    title = "Monthly Sampling Coverage: North Delta"
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.text = element_text(face = "bold"),
+    axis.text.x = element_text(size = 7, angle = 90),
+    axis.text.y = element_text(size = 7)
+  )
+n_delta <- c("AM001S", "MS001N", "SR014W", "SR017E", 
+             "SR024E", "SR043W", "SR049E", "SR060E")
+
+# Central Delta effort
+coverage %>% 
+  filter(region_label == "Central Delta",
+         year >= 1977) %>% 
+  mutate(month_label = 
+           factor(month, levels = 1:12, labels = month.abb)) %>% 
+  ggplot(aes(month_label, year, fill = factor(sampled))) +
+  geom_tile(color = NA) +
+  facet_wrap(~station) +
+  scale_fill_manual(values = c("0" = "grey95", "1" = "darkgreen"), guide = "none") +
+  labs(
+    x = "Month",
+    y = "Year",
+    title = "Monthly Sampling Coverage: Central Delta"
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.text = element_text(face = "bold"),
+    axis.text.x = element_text(size = 7, angle = 90),
+    axis.text.y = element_text(size = 7)
+  )
+cen_delta <- c("DS002S", "GS010E", "LP003E", "MK004W", 
+               "SF014E", "SJ001S", 
+               "SJ005N", 
+               "TM001N", "XC001N")
+
+# South Delta effort
+coverage %>% 
+  filter(region_label == "South Delta",
+         year >= 1977) %>% 
+  mutate(month_label = 
+           factor(month, levels = 1:12, labels = month.abb)) %>% 
+  ggplot(aes(month_label, year, fill = factor(sampled))) +
+  geom_tile(color = NA) +
+  facet_wrap(~station) +
+  scale_fill_manual(values = c("0" = "grey95", "1" = "darkred"), guide = "none") +
+  labs(
+    x = "Month",
+    y = "Year",
+    title = "Monthly Sampling Coverage: South Delta"
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.text = element_text(face = "bold"),
+    axis.text.x = element_text(size = 7, angle = 90),
+    axis.text.y = element_text(size = 7)
+  )
+s_delta <- c("MR010W", "SJ041N")
+
+# San Francisco & San Pablo bay effort
+coverage %>% 
+  filter(region_label == "San Francisco & San Pablo Bays",
+         year >= 1977) %>% 
+  mutate(month_label = 
+           factor(month, levels = 1:12, labels = month.abb)) %>% 
+  ggplot(aes(month_label, year, fill = factor(sampled))) +
+  geom_tile(color = NA) +
+  facet_wrap(~station) +
+  scale_fill_manual(values = c("0" = "grey95", "1" = "darkgray"), guide = "none") +
+  labs(
+    x = "Month",
+    y = "Year",
+    title = "Monthly Sampling Coverage: San Francisco & San Pablo Bays"
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.text = element_text(face = "bold"),
+    axis.text.x = element_text(size = 7, angle = 90),
+    axis.text.y = element_text(size = 7)
+  )
+# none of these sites qualified for sufficient coverage; good post 1998
+
+# San Joaquin River effort
+coverage %>% 
+  filter(region_label == "San Joaquin River",
+         year >= 1977) %>% 
+  mutate(month_label = 
+           factor(month, levels = 1:12, labels = month.abb)) %>% 
+  ggplot(aes(month_label, year, fill = factor(sampled))) +
+  geom_tile(color = NA) +
+  facet_wrap(~station) +
+  scale_fill_manual(values = c("0" = "grey95", "1" = "blue"), guide = "none") +
+  labs(
+    x = "Month",
+    y = "Year",
+    title = "Monthly Sampling Coverage: San Joaquin River"
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.text = element_text(face = "bold"),
+    axis.text.x = element_text(size = 7, angle = 90),
+    axis.text.y = element_text(size = 7)
+  )
+# none of these sites qualified for sufficient coverage
+
+# Sacramento River effort
+coverage %>% 
+  filter(region_label == "Sacramento River",
+         year >= 1977) %>% 
+  mutate(month_label = 
+           factor(month, levels = 1:12, labels = month.abb)) %>% 
+  ggplot(aes(month_label, year, fill = factor(sampled))) +
+  geom_tile(color = NA) +
+  facet_wrap(~station) +
+  scale_fill_manual(values = c("0" = "grey95", "1" = "orange"), guide = "none") +
+  labs(
+    x = "Month",
+    y = "Year",
+    title = "Monthly Sampling Coverage: Sacramento River"
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.text = element_text(face = "bold"),
+    axis.text.x = element_text(size = 7, angle = 90),
+    axis.text.y = element_text(size = 7)
+  )
+# none of these sites qualified for sufficient coverage
+
+# Lower Sacramento River effort
+coverage %>% 
+  filter(region_label == "Lower Sacramento River",
+         year >= 1977) %>% 
+  mutate(month_label = 
+           factor(month, levels = 1:12, labels = month.abb)) %>% 
+  ggplot(aes(month_label, year, fill = factor(sampled))) +
+  geom_tile(color = NA) +
+  facet_wrap(~station) +
+  scale_fill_manual(values = c("0" = "grey95", "1" = "chartreuse"), guide = "none") +
+  labs(
+    x = "Month",
+    y = "Year",
+    title = "Monthly Sampling Coverage: Lower Sacramento River"
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.text = element_text(face = "bold"),
+    axis.text.x = element_text(size = 7, angle = 90),
+    axis.text.y = element_text(size = 7)
+  )
+l_sac <- c("SR071E", "SR080E", "SR090W", "SR094E", 
+           "SR138E")
+
+
+```
+
+## site selection
+
+I basically eye-balled the figures above to select the following sites as judged minimally adequate or better for their temporal coverage.
+
+```{r}
+#| label: site-selection
+
+# 'eye-balled' the figures to identify the 'good' sites, those with better
+# annual and seasonal coverage (some still sparse or late start/early end):
+
+# here are all the DJFMP sites w RKM
+stations_with_rkm <-
+  read_rds(here("salmon/data/processed/stations_with_rkm.rds"))
+
+# this is a pretty conservative selection
+sites <- 
+  tibble(station = c(cen_delta, l_sac, n_delta, s_delta)) %>% 
+  left_join(stations_with_rkm, by = "station") %>% 
+  arrange(., region) %>% 
+  # river_km is approx dist from confluence
+  # RKI is the kms to the Golden Gate, following thalweg
+  mutate(RKI = river_km + 86) %>% 
+  write_rds(., here("salmon/data/processed/sites.rds"))
+
+# what does effort look like by region?
+coverage %>% 
+  # select stations from the 'sites' tibble, those w consistent effort Jan-Mar
+  filter(station %in% sites$station,
+         year >= 1977) %>% 
+  mutate(month_label = 
+           factor(month, levels = 1:12, labels = month.abb)) %>% 
+  ggplot(aes(month_label, year, 
+             # sampled: 0/1  (no/yes)
+             fill = factor(sampled))) +
+  geom_tile(color = NA) +
+  # consider regions individually
+  facet_wrap(~region_label) +
+  labs(
+    x = "Month",
+    y = "Year",
+    title = "Monthly Sampling Coverage by Region"
+  ) +
+  theme_bw()
+
+# central delta (example)
+coverage %>% 
+    filter(station %in% sites$station,
+           year >= 1977, region_label == "Central Delta") %>% 
+    mutate(month_label = 
+               factor(month, levels = 1:12, labels = month.abb)) %>% 
+    ggplot(aes(month_label, year, 
+               fill = factor(sampled))) +
+    geom_tile(color = NA) +
+    scale_fill_manual(
+        name = "Sampled?",
+        values = c("0" = "grey85", "1" = "steelblue"),
+        labels = c("0" = "No", "1" = "Yes")
+    ) +
+    labs(
+        x = "Month",
+        y = "Year",
+        title = "Monthly Beach Seine Effort",
+        subtitle = "Central Delta sites (selected)"
+    ) +
+    theme_bw() +
+  theme(legend.position = c(0.95, 0.13),
+        legend.justification = c("right", "bottom"))
+
+
+```
+
+# map sites
+
+The first flush working group has adopted specific regions to explore spatial variation in first flush analyses. Here, I'm sorting selected beach seine sites into these working regional polygons and mapping the results.
+
+```{r}
+#| label: map-sites
+
+# import Dave's regions shapefile
+sf_regions <- 
+  read_sf(here("data/processed/spatial/delta_regions.shp")) %>% 
+  clean_names()
+
+# create stations dataframe w lat lon
+stations <-
+  sites %>% 
+  left_join(
+    # retrieve DJFMP station metadata
+    read_rds(here("salmon/data/raw/dt5.rds")),
+            join_by(station == StationCode)) %>% 
+  mutate(lat = Latitude,
+         lon = Longitude,
+         .keep = "unused") %>% 
+  dplyr::select(-MethodCode) %>% 
+  clean_names()
+
+# convert stations to an sf object
+stations_sf <-
+  st_as_sf(stations,
+           coords = c("lon", "lat"),
+           # WGS84 lon/lat
+           crs = 4326) %>% 
+  # transform station points (NAD83/UTM zone 10N)
+  st_transform(., st_crs(sf_regions)) %>% 
+  # converts coordinates to recognizable lon/lat
+  st_transform(4326) %>% 
+  # add lon & lat, separate from geometry
+  mutate(
+    lon = st_coordinates(.)[,1],
+    lat = st_coordinates(.)[,2]
+  ) %>% 
+  # add first flush regions
+  mutate(ff_region =
+           factor(
+             case_when(
+             lat > 38.5   ~ "SAC",
+             lon > -121.6 ~ "SJR",
+             lon < -122.0 ~ "Bay",
+         .default = as.character(region_label))
+           )
+  )
+    
+# filter regions to retain first flush priorities
+stations_sf <-
+  stations_sf %>% 
+  filter(ff_region %in% c("SAC", "SJR", "Bay")) %>% 
+  dplyr::select(station, region_label, location, ff_region) %>% 
+  mutate(region_label = fct_relevel(region_label,
+                                    "Lower Sacramento River", "North Delta",
+                                    "Central Delta", "South Delta"))
+
+# map regions, including sites outside ff region
+ggplot() +
+  geom_sf(data = sf_regions, fill = "grey95", color = "grey60") +
+  geom_sf(
+    data = stations_sf,
+    aes(color = region_label),
+    size = 2
+  ) +
+  labs(
+    title = "Stations Colored by Region",
+    color = "Region"
+  ) +
+  theme_bw()
+
+
+```
+
+Add streamlines and the estuary's outline.
+
+```{r}
+#| label: better-map
+
+
+# enable map data caching
+options(tigris_use_cache = TRUE)
+
+# --- Bay/Estuary outlines ---
+# pull area water for the relevant counties (Contra Costa, Marin, Solano, etc.)
+bay_counties <- c("Contra Costa", "Marin", "Solano", "Napa", 
+                  "Sonoma", "San Francisco", "Alameda")
+
+bay_water <- map_dfr(bay_counties, 
+                     ~ area_water("CA", county = .x, class = "sf")) %>%
+  st_transform(st_crs(sf_regions))  # match existing CRS
+
+bay_water_filtered <- bay_water %>%
+  filter(AWATER > 10000000)  # units: square meters (10000000=10km^2)
+# could also filter by FULLNAME
+
+# --- NHD Streamlines ---
+# define a bounding box around study area
+bbox <- st_bbox(
+  c(xmin = -122.6, ymin = 37.7, xmax = -121.2, ymax = 39.3),
+  crs = st_crs(4326)
+) %>% st_as_sfc()
+
+# get NHD flowlines within the area, save!
+flowlines <- get_nhdplus(AOI = bbox, realization = "flowline")
+write_rds(flowlines, here("salmon/data/processed/flowlines"))
+
+# filter to meaningful streams (avoids tiny ditches cluttering the map)
+flowlines_filtered3 <- flowlines %>%
+  filter(streamorde >= 3)
+
+# --- updated plot ---
+beach_seine_stations <-
+  ggplot() +
+  geom_sf(data = sf_regions, fill = "grey95", color = "grey60") +
+  geom_sf(data = bay_water_filtered, fill = "lightsteelblue2", color = "steelblue3", linewidth = 0.3) +
+  geom_sf(data = flowlines_filtered3, color = "steelblue4", linewidth = 0.4, alpha = 0.7) +
+  geom_sf(data = stations_sf, aes(color = region_label), size = 2) +
+  # Place coord_sf LAST and define the CRS inside it
+  coord_sf(
+    xlim = c(-122.6, -121.2), 
+    ylim = c(37.7, 39.3), 
+    crs = st_crs(4326), 
+    default_crs = st_crs(4326),
+    expand = FALSE
+  ) +
+  labs(title = "Selected Beach Seine Stations", color = "Region") +
+  theme_bw()
+
+ggsave("beach_seine_stations.png", 
+       path = here("salmon/plots"),
+       plot = beach_seine_stations, 
+       width = 8, height = 8, 
+       dpi = 300)
+
+
+
+```
+
+Add station labels and city anchors using ggrepel
+
+```{r}
+library(ggrepel)
+
+# reference cities for geographic context
+
+cities <- data.frame(
+  name = c("Colusa", "Sacramento", "Rio Vista", "Stockton", "Benicia", "San Francisco"),
+  lon = c(-122.0094, -121.4789, -121.6926, -121.2908, -122.1539, -122.4194),
+  lat = c(39.2143, 38.5758, 38.1606, 37.9577, 38.0521, 37.7749)
+)
+
+# had "Knights Landing" -121.7183, 38.7996 but there's a KL station
+
+cities_sf <- st_as_sf(cities, coords = c("lon", "lat"), crs = 4326)
+
+# build combined labels dataframe
+station_labels <- stations %>%
+  select(label = location, lon, lat) %>%
+  mutate(type = "station")
+
+city_labels <- cities %>%
+  select(label = name, lon, lat) %>%
+  mutate(type = "city")
+
+all_labels <- bind_rows(station_labels, city_labels)
+
+beach_seine_stations <-
+  ggplot() +
+  geom_sf(data = sf_regions, fill = "grey95", color = "grey60") +
+  geom_sf(data = bay_water_filtered, fill = "lightsteelblue2",
+          color = "steelblue3", linewidth = 0.3) +
+  geom_sf(data = flowlines_filtered3, color = "steelblue4",
+          linewidth = 0.4, alpha = 0.7) +
+  geom_sf(data = stations_sf, aes(color = region_label), size = 2) +
+  geom_label_repel(
+    data = all_labels,
+    aes(x = lon, y = lat, label = label,
+        size = ifelse(type == "city", 3, 2.5),
+        fontface = ifelse(type == "city", "bold.italic", "plain")),
+    label.padding = unit(0.15, "lines"),
+    max.overlaps = 25, min.segment.length = 0.2,
+    box.padding = 0.4, force = 2
+  ) +
+  scale_size_identity() +
+  coord_sf(xlim = c(-122.55, -121.2), ylim = c(37.75, 39.3),
+           crs = st_crs(4326), default_crs = st_crs(4326), expand = FALSE) +
+  labs(title = "Selected Beach Seine Stations", color = "Region") +
+  theme_bw()
+
+ggsave(here("salmon/plots/beach_seine_stations.png"))
+
+```
+
+To retrieve the saved .png file and view it in RStudio...
+
+```{r}
+library(magick)
+image_read(here("salmon/plots/beach_seine_stations.png"))
+
+```

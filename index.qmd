@@ -6,4 +6,4 @@ Data Exploration:
 
 * [WQ Analysis Plan](code/analysis/cont_wq_analysis_plan.qmd)
 * [Interactive Continuous WQ Map](code/analysis/cont_wq_maps.qmd)
-* [SR at Freeport SSC and Turbidity](code/analysis/sac_fpt_ssc_turbidity.qmd)
+* [SSC and Turbidity Relationship](code/analysis/ssc_turbidity.qmd)

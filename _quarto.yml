@@ -5,7 +5,7 @@ project:
     - index.qmd
     - code/analysis/cont_wq_analysis_plan.qmd
     - code/analysis/cont_wq_maps.qmd
-    - code/analysis/sac_fpt_ssc_turbidity.qmd
+    - code/analysis/ssc_turbidity.qmd
 
 website:
   title: "First Flush Synthesis"
