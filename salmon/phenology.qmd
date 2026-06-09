@@ -50,6 +50,8 @@ library(tidyverse)
 raw <- 
   read_rds(here("salmon/data/raw/raw.rds"))
 
+##### not required for salmon phenology #######
+
 # naming conventions
 taxonomy <- 
   read_rds(
