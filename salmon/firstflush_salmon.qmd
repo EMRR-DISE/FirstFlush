@@ -134,19 +134,19 @@ Add water year and day of water year to the data frame.
 
 Notes:
 
-- trawl data (esp Chipps Island)
+-   trawl data (esp Chipps Island)
 
-- try 1992+
+-   try 1992+
 
-- check time window (does NOT seem to be have been effective)
+-   check time window (does NOT seem to be have been effective)
 
-- spatial partitioning by rm, bin by region or subregion
+-   spatial partitioning by rm, bin by region or subregion
 
-- beach seine data should still be helpful for teasing out the source of these juveniles (Am R, Feather, SJR, etc)
+-   beach seine data should still be helpful for teasing out the source of these juveniles (Am R, Feather, SJR, etc)
 
-- seine data useful for looking at the Delta rearing duration too
+-   seine data useful for looking at the Delta rearing duration too
 
-- don't worry now about run type
+-   don't worry now about run type
 
 ```{r}
 # add water year and day of water year
@@ -769,11 +769,11 @@ I ran multiple Bayesian linear models to look at the timing of juvenile salmon o
 
 Regarding results from analysis of the January-March data only, the 10% and 50% models' credible intervals provide strong evidence that the slopes are different from zero, however, the posterior distribution for the 90% model overlaps 0 slightly (95% CIs: -0.73, 0.05).
 
-- For the 10% accumulation model, there was an estimated slope of -0.69 days per year (probability the slope is \<0 = 0.999)
+-   For the 10% accumulation model, there was an estimated slope of -0.69 days per year (probability the slope is \<0 = 0.999)
 
-- For the 50% accumulation model, there was an estimated slope of -0.70 days per year (probability the slope is \<0 = 1.000)
+-   For the 50% accumulation model, there was an estimated slope of -0.70 days per year (probability the slope is \<0 = 1.000)
 
-- For the 90% accumulation model, there was an estimated slope -0.33 days per year (probability the slope is \<0 = 0.955)
+-   For the 90% accumulation model, there was an estimated slope -0.33 days per year (probability the slope is \<0 = 0.955)
 
 ## water year type
 

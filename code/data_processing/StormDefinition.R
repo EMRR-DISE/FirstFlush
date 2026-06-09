@@ -149,3 +149,31 @@ ggplot(filter(Firststorms, year(Date) >1995), aes(x = DOWY)) + geom_density()
 
 
 ggplot(filter(Firststorms, year(Date) >1995), aes(x = DOWY)) + geom_histogram()
+
+#add total volume
+
+
+
+#brian recommended total AF from the first storm. How do I do that?
+
+#I have CFS, multiply it by time of storm.
+
+#to converst CFS to AF, for an approximate result, divide the volume value by 43560
+#then mluitply by number of seconds in a day - 86400
+
+Sacflow_wstorms = mutate(Sacflow_wstorms, Volume = YoloSac/43560*86400)
+
+#add exports
+load("data/external/Dayflow.RData")
+
+Exports = select(Dayflow, Date, Year, CVP, SWP) %>%
+  mutate(Exports = CVP+SWP)
+
+Sacflow_wstorms = Sacflow_wstorms %>%
+  left_join(Exports)
+
+
+Storms = group_by(Sacflow_wstorms, ID) %>%
+  summarize(TotalFlow = sum(Volume), Exports = sum(Exports, na.rm =T))
+
+FirstStorms = left_join(Firststorms, Storms)

@@ -203,7 +203,7 @@ annual_salvage_SWP = df_salvage %>%
 smeltSWP = filter(annual_salvage_SWP, Taxa == "Hypomesus transpacificus")
 
 #annual salvage of smelt over time for amendment
-s1 = ggplot(smeltSWP, aes(x = WY, y = Count)) + geom_col() + geom_text(aes(y = Count + 3000, label = round(Count))) +
+s1 = ggplot(smeltSWP, aes(x = WY, y = Count)) + geom_col() + geom_text(aes(y = Count + 3000, label = round(Count)), size =3) +
   ylab("Annual Delta Smelt Salvage (SWP)") + theme_bw() + ggtitle("Delta Smelt Salvage (SWP only)")
 
 library(patchwork)
@@ -727,3 +727,44 @@ smeltsl <- sqlQuery(channel, smelt_query) %>%
 # Close the ODBC connection
 odbcClose(channel)
 
+fac = data.frame(facility = c("SWP", "CVP"))
+
+allyears = data.frame(WY = c(1993:2025), Count =0) %>%
+  merge(fac)
+
+smeltsl_annual = smeltsl %>%
+  mutate(Year = year(SampleTime), Month = month(SampleTime), WY = case_when(Month %in% c(10,11,12) ~ Year + 1,
+                                                                        TRUE ~ Year)) %>%
+  bind_rows(allyears) %>%
+  group_by(WY, facility) %>%
+  summarize(Count = sum(Count, na.rm =T))
+
+smeltsl_annualtot = smeltsl_annual %>%
+  group_by(WY) %>%
+  summarize(TotalCount = sum(Count))
+
+s3 = ggplot(smeltsl_annualtot, aes(x = WY, y = TotalCount)) + geom_col()+
+  geom_text(aes(y = TotalCount+1000, label = round(TotalCount))) + ylab("Number of Individuals \nCaught in Salvage")+
+  theme_bw()+ ggtitle("Delta Smelt caught (CVP+SWP)")
+s3
+
+s4 = ggplot(filter(smeltsl_annual, facility == "SWP"), aes(x = WY, y = Count)) + geom_col()+
+  geom_text(aes(y = Count+1000, label = round(Count)), size =3) + ylab("Number of Individuals \nCaught in Salvage")+
+  theme_bw()+ ggtitle("Delta Smelt caught (SWP only)")
+s4
+
+s3/s4
+
+ggsave("plots/Smeltsalvage_counts.png", width = 10, height =8)
+
+s1/s4
+ggsave("plots/Smeltsalvage_swp.png", width = 10, height =8)
+
+smeltx = smeltSWP %>%
+  select(WY, Count) %>%
+  rename(Salvage = Count)
+
+allsmelt = left_join(filter(smeltsl_annual, facility == "SWP"), smeltx) %>%
+  filter(!is.na(WY))
+
+write.csv(allsmelt, "smeltsalvagesummary.csv")
