@@ -50,8 +50,6 @@ library(tidyverse)
 raw <- 
   read_rds(here("salmon/data/raw/raw.rds"))
 
-##### not required for salmon phenology #######
-
 # naming conventions
 taxonomy <- 
   read_rds(
@@ -86,21 +84,12 @@ Let's pull in Rosie's storm data including *first flush* events, both timing and
 
 load(here("data/processed/storms/StormData.RData"))
 
-# use 'Sacflow_wstorms'
-
+# use 'Firststorms'
 storms <-
-  Sacflow_wstorms %>% 
-  group_by(ID) %>% 
-  summarise(
-    start_date = min(Date),
-    wy = get_waterYear(start_date),
-    ff_wyd = get_waterYearDay(start_date),
-    total_flow = sum(SAC + YOLO, na.rm = TRUE),
-    exports = sum(OUT, na.rm = TRUE)
-  ) %>% 
-  group_by(wy) %>% 
-  filter(start_date == min(start_date)) %>% 
-  ungroup()
+  Firststorms %>% 
+  arrange(WY) %>% 
+  # wyd of first flush events for each wy
+  mutate(wyd = get_waterYearDay(Date))
 
 write_rds(storms, here("salmon/data/processed/storms.rds"))
 
@@ -209,9 +198,8 @@ seine <-
   ) %>% 
   dplyr::select(c(sample_id:water_temp, CHN)) %>% 
   left_join(sites, by = "station") %>% 
-  mutate(location = location.x, .keep = "unused") %>% 
-  dplyr::select(-c(region, location.y, method_code)) %>% 
-  relocate(c(region_label, location, river_km), .after = station)
+  dplyr::select(-region) %>% 
+  relocate(region_label, .after = location)
 
 ### daily counts -----
 # aggregate to daily totals bc freq >>1 seine per day
@@ -269,7 +257,7 @@ regional_cumul <-
 # cumulative totals and percentages for Jan-Mar by station
 station_cumul <-
   seine %>% 
-  group_by(station, wy, month, wd, river_km) %>% 
+  group_by(station, wy, month, wd) %>% 
   summarise(
     daily_total = sum(CHN, na.rm = TRUE),
     .groups = "drop"
@@ -361,23 +349,23 @@ regional_cumul %>%
 
 station_cumul %>% 
   filter(!is.nan(cumul_percent)) %>% 
-  arrange(station, wy, wd, river_km) %>%
+  arrange(station, wy, wd) %>%
   mutate(station = as.factor(station)) %>% 
   ggplot(aes(x = wd,
              y = cumul_percent,
-             color = river_km,
+             color = station,
              # group = wy
              )) +
   geom_line() +
   xlim(50, 200) +
   geom_hline(yintercept = c(10, 50, 90),
              linetype = "dashed") +
-  scale_color_viridis_c(option = "mako") +
+  scale_color_viridis_d(option = "mako") +
   labs(x = "Day of Water Year",
        y = "Cumulative % of 3-Month Total", 
        title = "Juvenile Chinook Accumulation Curves by Station",
        subtitle = "January - March, 1977-2024",
-       color = "River KM") +
+       color = "Water Year") +
   theme_bw()
 
 ```
@@ -435,21 +423,6 @@ three_month_regional_benchmarks <-
   regional_cumul %>% 
   arrange(region_label, wy, wd) %>% 
   group_by(region_label, wy) %>% 
-  summarise(
-    day_10 = min(wd[cumul_percent >= 10]),
-    day_50 = min(wd[cumul_percent >= 50]),
-    day_90 = min(wd[cumul_percent >= 90]),
-    .groups = "drop"
-  ) %>% 
-  pivot_longer(cols = c(day_10, day_50, day_90), 
-               names_to = "percentile", 
-               values_to = "wd") %>% 
-  mutate(percentile = factor(percentile))
-
-three_month_station_benchmarks <-
-  station_cumul %>% 
-  arrange(station, wy, wd) %>% 
-  group_by(station, wy) %>% 
   summarise(
     day_10 = min(wd[cumul_percent >= 10]),
     day_50 = min(wd[cumul_percent >= 50]),
@@ -724,14 +697,20 @@ Pull in Rosie's storm data and integrate that with the benchmark data from above
 #| message: false
 #| warning: false
 
+
+storms <- 
+  read_rds(here("salmon/data/processed/storms.rds")) %>% 
+  mutate(ff_wyd = wyd,
+         .keep = "unused")
+
 # no first flush storms for 1977, 2020, 2022 and 2025--filter(is.na(WY))
 
 ff_data <- 
   three_month_regional_benchmarks %>% 
   left_join(storms,
-            join_by(wy),
+            join_by(wy == WY),
             keep = FALSE) %>% 
-  dplyr::select(wy, wy_meanCentered, wyt, percentile, wd, ff_wyd, total_flow, exports, region = region_label) %>% 
+  dplyr::select(wy, wy_meanCentered, wyt, ff_wyd, percentile, wd, SAC, region = region_label) %>% 
   filter(!is.na(ff_wyd))
 
 ```
@@ -845,8 +824,7 @@ conditional_effects(bmod3, "ff_wyd:percentile") # ff matters more early in migr
 
 bmod4 <- 
   brm(data = ff_data,
-      # within yr obs may not be independent; 
-      # adding random intercept (1|wy) for wy may help
+      # within yr obs may not be independent; this may help
       wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + (1 | wy),
       family = student,
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
@@ -893,7 +871,7 @@ conditional_effects(bmod5, "ff_wyd:percentile")
 
 ```
 
-The diagnostics look clean again — all `Rhat` = 1.00, ESS well above 1000, and `nu` well below 10. Adding the random intercept for water year `(1 | wy)` allows some years to be systematically higher or lower in `wd` than the global mean, while sharing information across years via partial pooling. The results look really good, but I think we should add water year type to the model to see if overall water year conditions affect migration timing. This could, for example, affect the tail end of the migration (`day_90`) while having little or no effect on the first 10%.
+The diagnostics look clean again — all `Rhat` = 1.00, ESS well above 1000, and `nu` well below 10. The results look really good, but I think we should add water year type to the model to see if overall water year conditions affect migration timing. This could, for example, affect the tail end of the migration (`day_90`) while having little or no effect on the first 10%.
 
 ```{r}
 #| label: ff+wyt
@@ -1025,15 +1003,15 @@ loo_compare(loos[c("bmod3", "bmod4", "bmod5", "bmod6")])
 
 ```
 
-Models `bmod2` and `bmod6` outperform their respective alternatives although the differences between `bmod6` and `bmod4` and `bmod5` are insignificant.
+Models `bmod2` and `bmod5` outperform their respective alternatives.
 
 ### interpretation
 
-While output from the models designed to study the importance of first flush timing on migration phenology are similar, `mbod6` outperformed `bmod5` and `bmod4` so let's work through the output for `mbod6`. The diagnostics look clean again — all Rhat = 1.00, ESS well above 1000. How should we understand these results?
+While output from the two models designed to study the importance of first flush timing on migration phenology are similar, `mbod5` outperformed `bmod3` and `bmod4` so let's work through the output for `mbod4`. The diagnostics look clean again — all Rhat = 1.00, ESS well above 1000. How should we understand these results?
 
-- `Intercept` (101.68, CI \[91.77-11.94\]): This is the expected `wd` for the 10th percentile benchmark in the reference region (Central Delta) at the mean year when `ff_wyd` = 0. Since day 0 of the water year isn't meaningful biologically, treat this more as a mathematical anchor than an interpretable quantity.
+- `Intercept` (101.26, CI \[93.36-109.29\]): This is the expected `wd` for the 10th percentile benchmark in the reference region (Central Delta) at the mean year when `ff_wyd` = 0. Since day 0 of the water year isn't meaningful biologically, treat this more as a mathematical anchor than an interpretable quantity.
 
-- Day of the first flush (`ff_wyd`; 0.21, CI \[0.13-0.30\]): Credibly positive — each day later that first flush occurs, the 10th percentile outmigration benchmark shifts \~0.21 days later. First flush timing matters: a pulse that comes a month late pushes early migrants about 6 days later.
+- Day of the first flush (`ff_wyd`; 0.21, CI \[0.13-0.29\]): Credibly positive — each day later that first flush occurs, the 10th percentile outmigration benchmark shifts \~0.21 days later. First flush timing matters: a pulse that comes a month late pushes early migrants about 6 days later.
 
 - Interactions between first flush timing and the benchmarks:
 
@@ -1047,7 +1025,7 @@ While output from the models designed to study the importance of first flush tim
 
 - Regional effects (region) are comparable to results from the earlier models. As expected, salmon reach the upstream regions (lower Sacramento and North Delta) before reaching the Central Delta by about 8 days for the Lower Sacramento and by about 2.5 days for the North Delta. Timing at the South Delta cannot be distinguished from the Central Delta.
 
-- Change over time (`wy_meanCentered`; -0.29, CI \[-0.48--0.11\]): There is a credible temporal trend towards earlier migration, although it's modified by the timing of first flush events.
+- Change over time (`wy_meanCentered`; -0.30, CI \[-0.47--0.12\]): There is a credible temporal trend towards earlier migration, although it's modified by the timing of first flush events.
 
 - `sigma` (8.56): Confirms that first flush timing adds modest but real explanatory power.
 
@@ -1055,7 +1033,7 @@ While output from the models designed to study the importance of first flush tim
 
 ### priors
 
-Initially, I accepted the default priors that `brms` employs. These weren't bad – 'flat' for all except for the `intercepts` and for `sigma` where it uses `student_t`, but the tuning done for `bmod6` really improved the model outcome.\
+Initially, I accepted the default priors that `brms` employs. These weren't bad – 'flat' for all except for the `intercepts` and for `sigma` where it uses `student_t`, but the tuning done for `bmod5` really improved the model outcome.\
 
 ```{r}
 #| label: priors
@@ -1067,73 +1045,6 @@ prior_summary(bmod2)
 prior_summary(bmod3)
 prior_summary(bmod4)
 prior_summary(bmod5)
-prior_summary(bmod6)
-
-```
-
-### magnitude
-
-Let's incorporate the magnitude of these first flush events.
-
-```{r}
-#| label: ff-magnitude
-
-# flow data includes big numbers; best to standardize this variable
-ff_data <- ff_data %>% mutate(flow_scaled = scale(total_flow))
-
-# now let's add this to the model; this just with the default priors bc my efforts earlier really didn't improve things
-bmod7 <- brm(
-  data = ff_data,
-  # note addition of 3-way interaction
-  wd ~ 1 + ff_wyd * flow_scaled * percentile + region + wy_meanCentered + (1 | wy),
-  family = student,
-  iter = 2000, warmup = 1000, chains = 4, cores = 4,
-  seed = 42,
-  file = here("salmon/results/bmod7"),
-  file_refit = "on_change"
-)
-
-prior_summary(bmod7)
-pp_check(bmod7) # looks good
-plot(bmod7) # SAC isn't a player!
-summary(bmod7)
-
-bmod7a <- brm(
-  data = ff_data %>% 
-    # exclude tail end of the migration
-    filter(percentile != "day_90"),
-  # timing only; baseline model
-  wd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + (1 | wy),
-  family = student,
-  iter = 2000, warmup = 1000, chains = 4, cores = 4,
-  seed = 42,
-  file = here("salmon/results/bmod7a"),
-  file_refit = "on_change"
-)
-pp_check(bmod7a) # looks good
-plot(bmod7a)
-summary(bmod7a)
-
-bmod7b <- brm(
-  data = ff_data %>% 
-    # exclude tail end of the migration
-    filter(percentile != "day_90"),
-  # with 3-way interaction
-  wd ~ 1 + ff_wyd * flow_scaled * percentile + region + wy_meanCentered + (1 | wy),
-  family = student,
-  iter = 2000, warmup = 1000, chains = 4, cores = 4,
-  seed = 42,
-  file = here("salmon/results/bmod7b"),
-  file_refit = "on_change"
-)
-pp_check(bmod7b)
-plot(bmod7b) # looks super good
-summary(bmod7b)
-
-bmod7 <- add_criterion(bmod7, "loo")
-bmod7a <- add_criterion(bmod7a, "loo")
-bmod7b <- add_criterion(bmod7b, "loo")
-loo_compare(bmod7a, bmod7b)
 
 ```
 
@@ -1150,7 +1061,5 @@ Need to consider finer spatial scales: what do accumulation curves for individua
 What about including the whole year and limiting the time series to post-1992 (or thereabouts)?
 
 Surely there is an applicable metric for the magnitude of a first flush event. Include that in one of these models!
-
-Does the size of outmigrating salmon change over the course of the year? Is that affected by environmental factors (e.g., maybe the size of the first 10% increases when the timing is pushed later in the season)?
 
 What about other salmon data sources (eg trawls from Chipps Island)? What about other fish species?
