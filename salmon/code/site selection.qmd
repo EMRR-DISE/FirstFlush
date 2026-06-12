@@ -258,7 +258,7 @@ coverage %>%
     axis.text.x = element_text(size = 7, angle = 90),
     axis.text.y = element_text(size = 7)
   )
-# none of these sites qualified for sufficient coverage; good post 1998
+# none of these sites qualified for sufficient coverage; SJ056E is good post-1997; SJ058W & SJ063W are marginally acceptable post-1997; I looked at but discarded SJ068W, SJ074W, SJ077E, SJ083W
 
 # San Joaquin River effort
 coverage %>% 
@@ -359,6 +359,15 @@ sites <-
   # RKI is the kms to the Golden Gate, following thalweg
   mutate(RKI = river_km + 86) %>% 
   write_rds(., here("salmon/data/processed/sites.rds"))
+
+# sites selected for complete-ish coverage post-1998; here are MORE 
+# sites but suitable for use with a restricted timeframe (1998+)
+sites_ltd <-
+  tibble(station = new_sites) %>% 
+  left_join(stations_with_rkm, by = "station") %>% 
+  arrange(., region) %>% 
+  mutate(RKI = river_km + 86) %>% 
+  write_rds(., here("salmon/data/processed/sites_ltd.rds"))
 
 # what does effort look like by region?
 coverage %>% 

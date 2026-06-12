@@ -106,11 +106,14 @@ There are beach seine data from a large number of sites, but the consistency wit
 #| message: false
 #| warning: false
 
-
+# for longest time series (1978-2024)
 # list of beach seine stations identified minimally adequate for 
 # temporal coverage (tibble includes region and region_label)
 sites <- 
   read_rds(here("salmon/data/processed/sites.rds"))
+
+sites_ltd <-
+  read_rds(here("salmon/data/procesed/sites_ltd.rds"))
 
 # select data from those minimum effort sites and for complete water years (1976-10-01 onwards)
 dat <-
@@ -128,6 +131,22 @@ coverage <- dat %>%
   distinct(station, year, month, region) %>%
   # 'tag' months sampled
   mutate(sampled = 1)
+
+# sites w good data post-2000 based on looking at heat maps
+new_sites <-
+  # north delta
+  c("AM001S", "MS001N", "SR014W", "SR017E", "SR024E", "SR043W", "SR049E", "SR060E", "SS011N",
+    # central delta
+    "DS002S", "GS010E", "LP003E", "MK004W", "SF014E", "SJ001S", "SJ005N", "TM001N", "XC001N",
+    # south delta
+    "MR010W", "SJ041N", "SJ032S", "SJ051E",
+    # sf and san pablo bays
+    "SA001M", "SA004W", "SA007E", "SA008W", "SA009E", "SA0010W", "SP000W", "SP001W", "SP003E",
+    # san joaquin
+    "SJ056E", "SJ058W", "SJ063W",
+    # lower sac r
+    "SR071E", "SR080E", "SR090W", "SR094E", "SR138E"
+  )
 
 ```
 
@@ -161,9 +180,9 @@ dat <-
   dplyr::select(c(station:water_temp, organism_code, fork_length, race_by_length, count)) %>% 
   # add 'sample_code' to identify each unique seine event
   group_by(date, time, station) %>% 
-  mutate(sample_id = cur_group_id()) %>% 
+  mutate(id_code = cur_group_id()) %>% 
   ungroup() %>% 
-  relocate(sample_id) %>% 
+  relocate(id_code) %>% 
   write_rds(., here("salmon/data/raw/dat.rds"))
 
 ```
@@ -185,21 +204,27 @@ Calculate the accumulated number of salmon over the course of each water year an
 seine <-
   dat %>% 
   pivot_wider(
-    # relies on 'sample_id' to distinguish among sample units, but retains environmental data
-    id_cols = c(sample_id:time, water_temp),
+    # relies on 'id_code' to distinguish among sample units, but retains environmental data
+    id_cols = c(id_code:time, water_temp),
     # columns for all fish spp (only CHN needed for this analysis)
     names_from = organism_code,
-    # log number of each speciesxfork_length for each seine (sample_id)
+    # log number of each speciesxfork_length for each seine (id_code)
     values_from = count,
     # if no matches, enter '0'
     values_fill = 0,
     # sum counts if multiple matches
     values_fn = sum
   ) %>% 
-  dplyr::select(c(sample_id:water_temp, CHN)) %>% 
+  dplyr::select(c(id_code:water_temp, CHN)) %>% 
   left_join(sites, by = "station") %>% 
-  dplyr::select(-region) %>% 
-  relocate(region_label, .after = location)
+  rename(location = location.x,
+         region = region.x) %>% 
+  mutate(wy = get_waterYear(date),
+         wyd = get_waterYearDay(date)) %>% 
+  dplyr::select(-c(region.y, location.y, time, method_code)) %>% 
+  relocate(c(region, region_label, location, station,
+             wy, wyd), .after = id_code) %>% 
+  ungroup()
 
 ### daily counts -----
 # aggregate to daily totals bc freq >>1 seine per day
@@ -207,7 +232,7 @@ seine <-
 # aggregated across all selected sites
 daily_delta <-
   seine %>%
-  group_by(wy, month, wd) %>%
+  group_by(wy, month, wyd) %>%
   summarise(
     daily_total = sum(CHN, na.rm = TRUE),
     .groups = "drop"
@@ -216,7 +241,16 @@ daily_delta <-
 # aggregated by region
 daily_regional <-
   seine %>% 
-  group_by(region_label, wy, month, wd) %>% 
+  group_by(region_label, wy, month, wyd) %>% 
+  summarise(
+    daily_total = sum(CHN, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# UNaggregated: daily totals, each site
+daily_site <-
+  seine %>% 
+  group_by(region_label, station, wy, month, wyd) %>% 
   summarise(
     daily_total = sum(CHN, na.rm = TRUE),
     .groups = "drop"
@@ -229,13 +263,13 @@ delta_cumul <-
   daily_delta %>% 
   filter(month <= 3) %>% 
   group_by(wy) %>% 
-  arrange(wy, wd) %>% 
+  arrange(wy, wyd) %>% 
   mutate(
     annual_total = sum(daily_total),
     cumul_total = cumsum(daily_total),
     cumul_percent = 100 * cumul_total / annual_total
   ) %>% 
-  arrange(wy, month, wd) %>% 
+  arrange(wy, month, wyd) %>% 
   ungroup() %>% 
   write_rds(., here("salmon/data/processed/delta_cumul.rds"))
 
@@ -244,35 +278,30 @@ regional_cumul <-
   daily_regional %>% 
   filter(month <= 3) %>% 
   group_by(wy, region_label) %>% 
-  arrange(region_label, wy, wd) %>% 
+  arrange(region_label, wy, wyd) %>% 
   mutate(
     annual_total = sum(daily_total),
     cumul_total = cumsum(daily_total),
     cumul_percent = 100 * cumul_total / annual_total
   ) %>% 
-  arrange(region_label, wy, month, wd) %>% 
+  arrange(region_label, wy, month, wyd) %>% 
   ungroup() %>% 
   write_rds(., here("salmon/data/processed/regional_cumul.rds"))
 
 # cumulative totals and percentages for Jan-Mar by station
-station_cumul <-
-  seine %>% 
-  group_by(station, wy, month, wd) %>% 
-  summarise(
-    daily_total = sum(CHN, na.rm = TRUE),
-    .groups = "drop"
-  ) %>% 
+site_cumul <-
+  daily_site %>% 
   filter(month <= 3) %>% 
-  group_by(wy, station) %>% 
-  arrange(station, wy, wd) %>% 
+  group_by(wy, region_label, station) %>% 
+  arrange(region_label, station, wy, wyd) %>% 
   mutate(
     annual_total = sum(daily_total),
     cumul_total = cumsum(daily_total),
     cumul_percent = 100 * cumul_total / annual_total
   ) %>% 
-  arrange(station, wy, month, wd) %>% 
+  arrange(region_label, station, wy, month, wyd) %>% 
   ungroup() %>% 
-  write_rds(., here("salmon/data/processed/station_cumul.rds"))
+  write_rds(., here("salmon/data/processed/site_cumul.rds"))
 
 ```
 
@@ -347,11 +376,11 @@ regional_cumul %>%
 ```{r}
 #| label: sta-accumul
 
-station_cumul %>% 
+site_cumul %>% 
   filter(!is.nan(cumul_percent)) %>% 
-  arrange(station, wy, wd) %>%
+  arrange(station, wy, wyd) %>%
   mutate(station = as.factor(station)) %>% 
-  ggplot(aes(x = wd,
+  ggplot(aes(x = wyd,
              y = cumul_percent,
              color = station,
              # group = wy
@@ -363,9 +392,9 @@ station_cumul %>%
   scale_color_viridis_d(option = "mako") +
   labs(x = "Day of Water Year",
        y = "Cumulative % of 3-Month Total", 
-       title = "Juvenile Chinook Accumulation Curves by Station",
+       title = "Juvenile Chinook Accumulation Curves by Site",
        subtitle = "January - March, 1977-2024",
-       color = "Water Year") +
+       color = "Beach Seine Station") +
   theme_bw()
 
 ```
