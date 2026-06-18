@@ -83,15 +83,18 @@ Let's pull in Rosie's storm data including *first flush* events, both timing and
 
 
 load(here("data/processed/storms/StormData.RData"))
+# Firststorms, Sacflow_wstorms, Storms, StormStartEnd
 
 # use 'Firststorms'
 storms <-
   Firststorms %>% 
   arrange(WY) %>% 
   # wyd of first flush events for each wy
-  mutate(wyd = get_waterYearDay(Date))
+  mutate(wyd = get_waterYearDay(Date)) %>% 
+  select(ID, Date, wy = WY, wyd, SAC, YOLO, SJR, OUT, YoloSac) %>% 
+  clean_names()
 
-write_rds(storms, here("salmon/data/processed/storms.rds"))
+rm(Firststorms, Sacflow_wstorms, Storms, StormStartEnd)
 
 ```
 
@@ -108,19 +111,20 @@ There are beach seine data from a large number of sites, but the consistency wit
 
 # for longest time series (1978-2024)
 # list of beach seine stations identified minimally adequate for 
-# temporal coverage (tibble includes region and region_label)
+# coverage Jan, Feb & Mar (tibble includes region and region_label)
 sites <- 
   read_rds(here("salmon/data/processed/sites.rds"))
 
+# for a shorter time series with adequate monthly coverage
 sites_ltd <-
-  read_rds(here("salmon/data/procesed/sites_ltd.rds"))
+  read_rds(here("salmon/data/processed/sites_ltd.rds"))
 
 # select data from those minimum effort sites and for complete water years (1976-10-01 onwards)
 dat <-
   raw %>% 
   filter(station %in% sites$station,
          # limit to data collected during complete water years
-         date >= "1976-10-01") %>% 
+         date >= "1976-10-01" & date < "2024-10-01") %>% 
   mutate(year = year(date),
          month = month(date)) %>% 
   relocate(region, .after = id_code) %>% 
@@ -131,22 +135,6 @@ coverage <- dat %>%
   distinct(station, year, month, region) %>%
   # 'tag' months sampled
   mutate(sampled = 1)
-
-# sites w good data post-2000 based on looking at heat maps
-new_sites <-
-  # north delta
-  c("AM001S", "MS001N", "SR014W", "SR017E", "SR024E", "SR043W", "SR049E", "SR060E", "SS011N",
-    # central delta
-    "DS002S", "GS010E", "LP003E", "MK004W", "SF014E", "SJ001S", "SJ005N", "TM001N", "XC001N",
-    # south delta
-    "MR010W", "SJ041N", "SJ032S", "SJ051E",
-    # sf and san pablo bays
-    "SA001M", "SA004W", "SA007E", "SA008W", "SA009E", "SA0010W", "SP000W", "SP001W", "SP003E",
-    # san joaquin
-    "SJ056E", "SJ058W", "SJ063W",
-    # lower sac r
-    "SR071E", "SR080E", "SR090W", "SR094E", "SR138E"
-  )
 
 ```
 
@@ -174,11 +162,11 @@ dat <-
     # water year
     wy = dataRetrieval::calcWaterYear(date),
     # day of water year (wd), wyMonth=10L bc water year begins Oct 1
-    wd = EflowStats::get_waterYearDay(date, wyMonth = 10L)) %>% 
+    wyd = EflowStats::get_waterYearDay(date, wyMonth = 10L)) %>% 
   # reorg & select columns
-  relocate(wy:wd, .after = date) %>% 
+  relocate(wy:wyd, .after = date) %>% 
   dplyr::select(c(station:water_temp, organism_code, fork_length, race_by_length, count)) %>% 
-  # add 'sample_code' to identify each unique seine event
+  # add 'id_code' to identify each unique seine event
   group_by(date, time, station) %>% 
   mutate(id_code = cur_group_id()) %>% 
   ungroup() %>% 
@@ -217,13 +205,10 @@ seine <-
   ) %>% 
   dplyr::select(c(id_code:water_temp, CHN)) %>% 
   left_join(sites, by = "station") %>% 
-  rename(location = location.x,
-         region = region.x) %>% 
-  mutate(wy = get_waterYear(date),
-         wyd = get_waterYearDay(date)) %>% 
-  dplyr::select(-c(region.y, location.y, time, method_code)) %>% 
-  relocate(c(region, region_label, location, station,
-             wy, wyd), .after = id_code) %>% 
+  rename(location = location.x) %>% 
+  dplyr::select(-c(location.y, time, method_code)) %>% 
+  relocate(c(region, region_label, location, station), 
+           .after = id_code) %>% 
   ungroup()
 
 ### daily counts -----
@@ -258,22 +243,7 @@ daily_site <-
 
 ### cumulative percent------
 # limited to the period from Jan 1-Mar 31
-# calc cumulative percentage for each wy during that 3-month period, delta-wide
-delta_cumul <-
-  daily_delta %>% 
-  filter(month <= 3) %>% 
-  group_by(wy) %>% 
-  arrange(wy, wyd) %>% 
-  mutate(
-    annual_total = sum(daily_total),
-    cumul_total = cumsum(daily_total),
-    cumul_percent = 100 * cumul_total / annual_total
-  ) %>% 
-  arrange(wy, month, wyd) %>% 
-  ungroup() %>% 
-  write_rds(., here("salmon/data/processed/delta_cumul.rds"))
-
-# cumulative totals and percentages for Jan-Mar by region
+# calc cumulative totals & percentage for each wy for Jan-Mar by region
 regional_cumul <-
   daily_regional %>% 
   filter(month <= 3) %>% 
@@ -312,32 +282,58 @@ Plot the accumulation curves.
 #| message: false
 #| warning: false
 
-# annual (whole year) accumulation curves, lumping data from all sites
-daily_delta %>% 
-  group_by(wy) %>% 
-  arrange(wy, wd) %>% 
+# annual (whole year) accumulation curves
+daily_site %>% 
+  group_by(station, wy) %>% 
+  arrange(wy, wyd) %>% 
   mutate(
     annual_total = sum(daily_total),
     cumul_total = cumsum(daily_total),
     cumul_percent = 100 * cumul_total / annual_total
   ) %>% 
-  arrange(wy, month, wd) %>% 
-  ggplot(aes(x = wd,
+  arrange(station, wy, wyd) %>% 
+  ggplot(aes(x = wyd,
            y = cumul_percent,
-           group = wy,
+           # identify unique station*wy combos
+           group = interaction(station, wy),
            color = wy)) +         
   geom_line() +
   xlim(0, 300) +
   geom_hline(yintercept = c(10, 50, 90),
              linetype = "dashed") +
   scale_color_viridis_c(option = "mako") +
-  # highlight 1977 data
-  annotate("text", x = 250, y = 30,
-           label = "1977", color = "red", fontface = "bold") +
   labs(x = "Day of Water Year",
        y = "Cumulative % of Annual Total",
-       title = "Juvenile Chinook Delta-Wide Accumulation Curves",
-       subtitle = "data from 1977-2024",
+       title = "Juvenile Chinook Accumulation Curves",
+       subtitle = "by station; data from 1977-2024",
+       color = "water year") +
+  theme_bw()
+
+# accumulation curves for Jan-Mar
+daily_site %>% 
+  filter(wyd >= 93  & wyd <= 182) %>% 
+  group_by(station, wy) %>% 
+  arrange(wy, wyd) %>% 
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
+  ) %>% 
+  arrange(station, wy, wyd) %>% 
+  ggplot(aes(x = wyd,
+             y = cumul_percent,
+             # identify unique station*wy combos
+             group = interaction(station, wy),
+             color = wy)) +         
+  geom_line() +
+  xlim(80, 180) +
+  geom_hline(yintercept = c(10, 50, 90),
+             linetype = "dashed") +
+  scale_color_viridis_c(option = "mako") +
+  labs(x = "Day of Water Year",
+       y = "Cumulative % of Annual Total at each Station",
+       title = "Juvenile Chinook Accumulation Curves",
+       subtitle = "Jan-Mar data from 1977-2024",
        color = "water year") +
   theme_bw()
 
@@ -374,7 +370,7 @@ regional_cumul %>%
 ```
 
 ```{r}
-#| label: sta-accumul
+#| label: site-accumul
 
 site_cumul %>% 
   filter(!is.nan(cumul_percent)) %>% 
@@ -1074,6 +1070,234 @@ prior_summary(bmod2)
 prior_summary(bmod3)
 prior_summary(bmod4)
 prior_summary(bmod5)
+
+```
+
+## environmental predictability
+
+to do (working with `thresholds_annual`):
+
+- center water year (wd) DONE
+
+- add FF dates DONE
+
+- add wyt?
+
+- calculate env pred for each...region? station?? using d10, d50, d90???
+
+- station should probably be a factor
+
+- run analyses
+
+```{r}
+#| label: env-pred  
+#| 
+
+# find wyd when each threshold (10, 50, 90) is first crossed during Jan-Mar period
+thresholds_JanMar <- daily_site %>%
+  filter(wyd >= 93 & wyd <= 182) %>%
+  group_by(region_label, station, wy) %>%
+  arrange(wyd) %>%
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_percent = 100 * cumsum(daily_total) / annual_total
+  ) %>%
+  summarise(
+    d10 = wyd[which(cumul_percent >= 10)[1]],
+    d50 = wyd[which(cumul_percent >= 50)[1]],
+    d90 = wyd[which(cumul_percent >= 90)[1]],
+    .groups = "drop"
+  )
+
+# find wyd when each threshold (10, 50, 90) is first crossed over entire WY
+
+thresholds_annual <-
+  daily_site %>%
+  group_by(region_label, station, wy) %>%
+  arrange(wyd) %>%
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_percent = 100 * cumsum(daily_total) / annual_total
+  ) %>%
+  summarise(
+    d10 = wyd[which(cumul_percent >= 10)[1]],
+    d50 = wyd[which(cumul_percent >= 50)[1]],
+    d90 = wyd[which(cumul_percent >= 90)[1]],
+    .groups = "drop"
+  ) %>% 
+  # calc accumul rate...not really a rate but time interval freq equals 0 (ie (50-10)/0 = Inf), so have to think about this
+  # calc mean-centered water year for better model performance
+  mutate(d_rate = d50 - d10,
+         wy_meanCentered = wy - mean(wy)) %>% 
+  left_join(storms,
+            by = "wy",
+            keep = FALSE) %>% 
+  mutate(ff_wyd = wyd, .keep = "unused") %>% 
+  select(-c(id, date)) %>% 
+  filter(!is.na(ff_wyd)) %>% 
+  relocate(ff_wyd, .after = "wy_meanCentered")
+
+# dev matrix for calc Colwell's env pred
+# convert wyd to week-of-water-year
+colwell_data <- daily_site %>%
+  filter(wy >= 1998) %>%
+  group_by(region_label, station, wy) %>%
+  arrange(wyd) %>%
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_percent = 100 * cumsum(daily_total) / annual_total
+  ) %>%
+  summarise(
+    d10 = wyd[which(cumul_percent >= 10)[1]],
+    d50 = wyd[which(cumul_percent >= 50)[1]],
+    d90 = wyd[which(cumul_percent >= 90)[1]],
+    .groups = "drop"
+  ) %>%
+  # median crossing date across stations within region-year
+  group_by(region_label, wy) %>%
+  summarise(across(c(d10, d50, d90), \(x) median(x, na.rm = TRUE)),
+            .groups = "drop") %>%
+  # convert wyd to water year month (1=Oct, 2=Nov, ... 12=Sep)
+  mutate(across(c(d10, d50, d90),
+                \(x) cut(x,
+                         breaks = c(0, 31, 61, 92, 123, 151, 182, 212, 243, 273, 304, 334, 366),
+                         labels = 1:12),
+                .names = "{.col}_month"))
+
+# for each region, pivot and count
+colwell_matrix <- colwell_data %>%
+  pivot_longer(cols = ends_with("_month"),
+               names_to = "benchmark", values_to = "month") %>%
+  filter(!is.na(month)) %>%
+  group_by(region_label, benchmark, month) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  # fill in zero-count months
+  complete(region_label, benchmark, month = factor(1:12), fill = list(count = 0))
+
+# calc P, M, C
+colwell_stats <- colwell_matrix %>%
+  group_by(region_label) %>%
+  group_modify(~ {
+    
+    # wide matrix: rows = months (1-12), cols = benchmarks (d10, d50, d90)
+    mat <- .x %>%
+      mutate(month = as.integer(month)) %>%
+      pivot_wider(names_from = benchmark, values_from = count, values_fill = 0) %>%
+      arrange(month) %>%
+      select(-month) %>%
+      as.matrix()
+    
+    N <- sum(mat)
+    s <- ncol(mat)       # number of states = 3
+    Z <- log(s)          # normalizing constant; switch to log2() if you want bits
+    
+    # cell proportions and marginals
+    p_ij <- mat / N
+    p_i  <- rowSums(p_ij)   # time interval marginals
+    p_j  <- colSums(p_ij)   # state marginals
+    
+    # 0 * log(0) = 0 by convention
+    xlogx <- function(x) ifelse(x == 0, 0, x * log(x))
+    
+    HX  <- -sum(xlogx(p_j))    # uncertainty in state
+    HY  <- -sum(xlogx(p_i))    # uncertainty in time
+    HXY <- -sum(xlogx(p_ij))   # joint uncertainty
+    
+    C <- 1 - HX / Z             # constancy
+    M <- (HX + HY - HXY) / Z   # contingency
+    P <- C + M                  # predictability
+    
+    tibble(C = round(C, 3), 
+           M = round(M, 3), 
+           P = round(P, 3))
+  })
+
+colwell_stats
+
+# why the NAs for Sac R, SF/SP bays, SJR? is this a data issue?
+colwell_matrix %>%
+  filter(region_label %in% c("Sacramento River", 
+                             "San Francisco & San Pablo Bays", 
+                             "San Joaquin River")) %>%
+  group_by(region_label) %>%
+  summarise(total_count = sum(count))
+# the total counts are 0...how is this possible? will have to look into this
+
+# C=0 (constancy): no surprise that benchmarks are reached in different months
+# during different years, but surely there must be some overlap and C would be low but not 0. will have to look into this too
+
+# Which months contribute most to M (contingency)? If we can determine this, that'd tell me whether predictability is concentrated in a seasonal window or spread out across the year.
+colwell_monthly <- colwell_matrix %>%
+  group_by(region_label) %>%
+  group_modify(~ {
+    
+    mat <- .x %>%
+      mutate(month = as.integer(month)) %>%
+      pivot_wider(names_from = benchmark, values_from = count, values_fill = 0) %>%
+      arrange(month) %>%
+      select(-month) %>%
+      as.matrix()
+    
+    N <- sum(mat)
+    s <- ncol(mat)
+    Z <- log(s)
+    
+    p_ij <- mat / N
+    p_i  <- rowSums(p_ij)
+    p_j  <- colSums(p_ij)
+    
+    # each cell's contribution to M
+    # M_ij = (p_ij * log(p_ij / (p_i * p_j))) / Z
+    contrib <- matrix(NA, nrow = nrow(mat), ncol = ncol(mat))
+    for (i in 1:nrow(mat)) {
+      for (j in 1:ncol(mat)) {
+        if (is.na(p_ij[i,j]) || p_ij[i,j] == 0 || 
+            is.na(p_i[i])    || p_i[i] == 0    || 
+            is.na(p_j[j])    || p_j[j] == 0) {
+          contrib[i,j] <- 0
+        } else {
+          contrib[i,j] <- p_ij[i,j] * log(p_ij[i,j] / (p_i[i] * p_j[j])) / Z
+        }
+      }
+    }
+    
+    colnames(contrib) <- colnames(mat)
+    
+    as_tibble(contrib) %>%
+      mutate(month = 1:12)
+  }) %>%
+  pivot_longer(cols = c(d10_month, d50_month, d90_month),
+               names_to = "benchmark", values_to = "M_contrib") %>%
+  mutate(
+    month = factor(month, levels = 1:12,
+                   labels = c("Oct","Nov","Dec","Jan","Feb","Mar",
+                              "Apr","May","Jun","Jul","Aug","Sep"))
+  )
+
+# plot which months contribute most to M across each region; is predictability concentrated in a narrow seasonal window or spread out across the year?
+colwell_monthly %>% 
+  filter(!region_label %in% c("Sacramento River", "San Francisco & San Pablo Bays", "San Joaquin River")) %>% 
+  mutate(region_label = factor(region_label, 
+                               levels = c("Lower Sacramento River", "North Delta", "Central Delta", "South Delta"))) %>% 
+  mutate(benchmark = case_match(benchmark, 
+                                "d10_month" ~ "10%", 
+                                "d50_month" ~ "50%", 
+                                "d90_month" ~ "90%",
+                                # keeps unmatched values unchanged (shouldn't be needed)
+                                .default = benchmark)) %>%
+  ggplot(aes(x = month, y = M_contrib, fill = benchmark)) +
+  geom_col() +
+  facet_wrap(~ region_label) +
+  scale_fill_viridis_d() +
+  theme_bw() +
+  labs(x = "Month (water year)",
+       y = "Contribution to M (contingency)",
+       fill = "Benchmark")
+
+ggsave(here("salmon/plots/monthly_contrib_predictability.png"))
+
+# test our calculations using 'predicts' package
+library(hydrostats)
 
 ```
 

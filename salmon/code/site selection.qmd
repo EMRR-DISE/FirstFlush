@@ -362,6 +362,22 @@ sites <-
 
 # sites selected for complete-ish coverage post-1998; here are MORE 
 # sites but suitable for use with a restricted timeframe (1998+)
+# sites w good data post-2000 based on looking at heat maps
+new_sites <-
+  # north delta
+  c("AM001S", "MS001N", "SR014W", "SR017E", "SR024E", "SR043W", "SR049E", "SR060E", "SS011N",
+    # central delta
+    "DS002S", "GS010E", "LP003E", "MK004W", "SF014E", "SJ001S", "SJ005N", "TM001N", "XC001N",
+    # south delta
+    "MR010W", "SJ041N", "SJ032S", "SJ051E",
+    # sf and san pablo bays
+    "SA001M", "SA004W", "SA007E", "SA008W", "SA009E", "SA010W", "SP000W", "SP001W", "SP003E",
+    # san joaquin
+    "SJ056E", "SJ058W", "SJ063W",
+    # lower sac r
+    "SR071E", "SR080E", "SR090W", "SR094E", "SR138E"
+  )
+
 sites_ltd <-
   tibble(station = new_sites) %>% 
   left_join(stations_with_rkm, by = "station") %>% 
@@ -415,6 +431,8 @@ coverage %>%
 
 
 ```
+
+Jon Speegle sent me some sampling effort data from 2000 on. Using this, I determined which sites had been sampled all 27 water years across a median of 11+ months. A list of these sites is contained in site_sampling.csv.
 
 # map sites
 
