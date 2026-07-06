@@ -2,28 +2,21 @@
 # Author: Dave Bosworth
 # Contact: David.Bosworth@water.ca.gov
 
-# Package checking
-if (!requireNamespace("rlang", quietly = TRUE)) {
-  stop(
-    "'rlang' is required for the sourced functions",
-    "\nTo install it, run: install.packages('rlang')",
-    call. = FALSE
-  )
+# Read the stations metadata YAML and convert it into a flat tibble for branching
+read_cwq_stations_meta <- function(yaml_file) {
+  yaml_data <- yaml::read_yaml(yaml_file)
+
+  # Bind the list elements into rows of a data frame
+  yaml_data$stations |>
+    dplyr::bind_rows() |>
+    dplyr::mutate(
+      parameters = purrr::imap(parameters, \(x, idx) {
+        tibble::tibble(param_name = idx, param_code = as.character(x))
+      })
+    ) |>
+    tidyr::unnest(cols = parameters)
 }
 
-rlang::check_installed(
-  c(
-    "dplyr",
-    "EDIutils",
-    "glue",
-    "purrr",
-    "jsonlite",
-    "tidyr",
-    "stringr",
-    "tidyselect"
-  ),
-  reason = "for the sourced functions"
-)
 
 # Get data entity names for specified EDI ID
 get_edi_data_entities <- function(edi_id) {

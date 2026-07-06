@@ -1,0 +1,36 @@
+# Define parameter suites used in this yml configuration file
+.parameter_suites:
+  # Base USGS WQ suite
+  core_usgs_sensors: &core_usgs
+    water_temp: "00010"
+    sp_cond: "00095"
+    turbidity: "63680"
+
+stations:
+  - station_id: FPT
+    station_full_name: Sacramento River at Freeport
+    data_source: USGS
+    data_type: continuous
+    source_id: USGS-11447650
+    parameters:
+      <<: *core_usgs
+      discharge: "00060"
+
+  - station_id: FPT
+    station_full_name: Sacramento River at Freeport
+    data_source: USGS
+    data_type: daily
+    source_id: USGS-11447650
+    parameters:
+      ssc: "80154"
+      water_temp: "00010"
+
+  # - station_id: SJR_USGS
+  #   station_full_name: San Joaquin River near Vernalis
+  #   data_source: USGS
+  #   source_id: USGS-11303500
+
+  # - station_id: SJJ
+  #   station_full_name: San Joaquin River at Jersey Point
+  #   data_source: USGS-continuous
+  #   source_id: USGS-11337190

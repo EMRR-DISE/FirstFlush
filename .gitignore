@@ -6,3 +6,6 @@
 **/*.quarto_ipynb
 .positai
 .DS_Store
+
+# Exclude targets cache and data store
+_targets/
