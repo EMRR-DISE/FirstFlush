@@ -36,6 +36,7 @@ library(EflowStats)
 library(fishualize)
 library(tidybayes)
 library(nlme)
+library(envPred) # install_github("dbarneche/envPred"), requires devtools
 library(tidyverse)
 
 ```
@@ -300,7 +301,7 @@ Plot the accumulation curves.
 #| warning: false
 
 # these don't offer a lot!
-# annual (whole year) accumulation curves
+# annual (whole year) accumulation curves at the site level
 daily_site %>% 
   filter(wy >= 1998) %>% 
   group_by(station, wy) %>% 
@@ -329,7 +330,7 @@ daily_site %>%
        color = "water year") +
   theme_bw()
 
-# accumulation curves for Jan-Mar
+# accumulation curves for Jan-Mar at the site level
 daily_site %>% 
   filter(wyd >= 93  & wyd <= 182) %>% 
   group_by(station, wy) %>% 
@@ -354,7 +355,65 @@ daily_site %>%
   labs(x = "Day of Water Year",
        y = "Cumulative % of Annual Total at each Station",
        title = "Juvenile Chinook Accumulation Curves",
-       subtitle = "Jan-Mar data from 1977-2024",
+       subtitle = "by station; Jan-Mar data from 1977-2024",
+       color = "water year") +
+  theme_bw()
+
+# annual (whole year) accumulation curves at the regional level
+daily_regional %>% 
+  filter(wy >= 1998) %>% 
+  group_by(region_label, wy) %>% 
+  arrange(wy, wyd) %>% 
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
+  ) %>% 
+  arrange(region_label, wy, wyd) %>% 
+  ggplot(aes(x = wyd,
+             y = cumul_percent,
+             # identify unique region*wy combos
+             group = interaction(region_label, wy),
+             color = wy)) +         
+  geom_line() +
+  # keep the data but zoom the view
+  coord_cartesian(xlim = c(0, 300)) +
+  geom_hline(yintercept = c(10, 50, 90),
+             linetype = "dashed") +
+  scale_color_viridis_c(option = "mako") +
+  labs(x = "Day of Water Year",
+       y = "Cumulative % of Annual Total",
+       title = "Juvenile Chinook Accumulation Curves",
+       subtitle = "sites summed by region; data from 1998-2024",
+       color = "water year") +
+  theme_bw()
+
+# accumulation curves for Jan-Mar at the region level
+daily_regional %>% 
+  filter(wyd >= 93  & wyd <= 182) %>% 
+  group_by(region_label, wy) %>% 
+  arrange(wy, wyd) %>% 
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
+  ) %>% 
+  arrange(region_label, wy, wyd) %>% 
+  ggplot(aes(x = wyd,
+             y = cumul_percent,
+             # identify unique region*wy combos
+             group = interaction(region_label, wy),
+             color = wy)) +         
+  geom_line() +
+  # keep the data but zoom the view
+  coord_cartesian(xlim = c(80, 200)) +
+  geom_hline(yintercept = c(10, 50, 90),
+             linetype = "dashed") +
+  scale_color_viridis_c(option = "mako") +
+  labs(x = "Day of Water Year",
+       y = "Cumulative % of Annual Total",
+       title = "Juvenile Chinook Accumulation Curves",
+       subtitle = "sites summed by region; Jan-Mar data from 1977-2024",
        color = "water year") +
   theme_bw()
 
@@ -368,15 +427,16 @@ daily_site %>%
 
 regional_cumul %>% 
   arrange(region_label, wy, wyd) %>%
-  mutate(region_label = fct_relevel(region_label, 
-                                     "Lower Sacramento River", "North Delta", 
-                                     "Central Delta", "South Delta")) %>% 
+  mutate(region_label = 
+           fct_relevel(region_label, 
+                       "Lower Sacramento River", "North Delta", 
+                       "Central Delta", "South Delta")) %>% 
   ggplot(aes(x = wyd,
              y = cumul_percent,
              color = wy,
              group = wy)) +
   geom_line() +
-  xlim(50, 200) +
+  xlim(80, 200) +
   geom_hline(yintercept = c(10, 50, 90),
              linetype = "dashed") +
   scale_color_viridis_c(option = "mako") +
@@ -700,6 +760,7 @@ bmod1 <-
 pp_check(bmod1) # looks good!
 (bmod1_sum <- summary(bmod1)) # see analysis
 plot(bmod1) # looks good
+
 conditional_effects(bmod1, "wy_meanCentered:percentile") # plot doesn't add much
 
 ```
@@ -729,6 +790,7 @@ bmod2 <-
 pp_check(bmod2) # looks good!
 (bmod2_sum <- summary(bmod2)) # see analysis
 plot(bmod2) # looks good
+
 conditional_effects(bmod2, "wy_meanCentered:percentile") # doesn't add much
 
 ```
@@ -804,7 +866,6 @@ The migration data look cool, but first, does the timing of first flush events c
 
 ```{r}
 #| label: ff-timing
-
 
 # does the timing of the ff events change over time?
 ff_data %>% 
@@ -967,9 +1028,57 @@ pp_check(bmod6, type = "stat", stat = "mean")
 plot(bmod6) # looks good
 conditional_effects(bmod6, "ff_wyd:percentile")
 
+# does ff magnitude ('yolo_sac') have an effect?
+# first, is there correlation btwn ff_wyd and yolo_sac? seems unlikely but...
+cor(ff_data$ff_wyd, ff_data$yolo_sac, use = "complete.obs")
+# nope!
+
+bmod7 <- brm(
+  data = ff_data,
+  # note DROPPING of the monotonic wyt & addition of yolo_sac (ff mag)
+  wyd ~ 1 + ff_wyd * percentile + ff_wyd * yolo_sac + percentile * yolo_sac + 
+    region + wy_meanCentered + (1 | wy),
+  # sample_prior = "only", # run pp_check(bmod6); if ok run without
+  family = student,
+  # prior = my_priors_bmod6,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  seed = 42,
+  file = here("salmon/results/bmod7"),
+  file_refit = "on_change"
+)
+
+pp_check(bmod7)
+pp_check(bmod7, type = "stat", stat = "mean")
+(bmod7_sum <- summary(bmod7)) # model prob over-parameterized
+plot(bmod7)
+conditional_effects(bmod7, "ff_wyd:percentile")
+
+bmod8 <- brm(
+  data = ff_data,
+  wyd ~ 1 + ff_wyd * percentile + yolo_sac * percentile +
+    region + wy_meanCentered + (1 | wy),
+  family = student,
+  iter = 2000, warmup = 1000, chains = 4, cores = 4,
+  # improve sampling efficiency w...
+  control = list(max_treedepth = 15),
+  seed = 42,
+  file = here("salmon/results/bmod8"),
+  file_refit = "on_change"
+)
+pp_check(bmod8) # looks okay
+pp_check(bmod8, type = "stat", stat = "mean")
+plot(bmod8)
+(bmod8_sum <- summary(bmod8))
+# check specific parameter pairs you care about
+pairs(bmod8, pars = c("b_ff_wyd", "b_yolo_sac", 
+                      "b_percentileday_50:yolo_sac",
+                      "b_percentileday_90:yolo_sac"))
+
 bmod5 <- add_criterion(bmod5, "loo")
 bmod6 <- add_criterion(bmod6, "loo")
-loo_compare(bmod5, bmod6)
+# bmod7 <- add_criterion(bmod7, "loo") # too messed up to use
+bmod8 <- add_criterion(bmod8, "loo")
+loo_compare(bmod5, bmod6, bmod8)
 
 ```
 
@@ -1054,7 +1163,19 @@ loo_compare(loos[c("bmod3", "bmod4", "bmod5", "bmod6")])
 
 ```
 
-Models `bmod2` and `bmod5` outperform their respective alternatives.
+Clean result — bmod2 (Student-t) is clearly preferred over bmod1 (Gaussian), with p_worse=0.94 meaning there's a 94% probability bmod1 is worse. This makes sense given that Student-t is more robust to outliers and our wyd data likely has some extreme values in years with unusual migration timing. Models `bmod2` and `bmod5` outperform their respective alternatives.
+
+So bmod4 and bmod5 use identical formulas and data, differing only in priors — bmod4 uses brms defaults, bmod5 uses weakly informative priors. The LOO comparison showing them as virtually identical (elpd_diff = -0.1) means the priors have negligible influence on the posterior, which is actually reassuring — it suggests the data are informative enough to dominate regardless of prior choice. Given that, **bmod4 (default priors) is the simpler and equally well-supported choice**. The weakly informative priors in bmod5 aren't hurting anything but they're not helping either, so there's no strong justification for the added complexity of specifying them.
+
+There are multiple lines of evidence supporting bmod4 over bmod6:
+
+1.  **LOO:** elpd_diff = -0.2, essentially noise — wyt adds nothing predictively
+
+2.  **Posterior for mowyt:** Estimate = -0.09, 95% CI \[-1.63, 1.55\] — completely straddles zero with wide uncertainty, no credible effect
+
+3.  **Parsimony:** `(1|wy)` already captures year-to-year variation in a flexible, data-driven way. `mo(wyt)` imposes an ordinal structure on top of that which the data don't support
+
+4.  **Conceptual:** ff_wyd is already carrying the "what kind of year is this" signal — wyt and ff_wyd are likely correlated, so wyt has little independent explanatory power left once ff_wyd is in the model. The combination of no predictive improvement, negligible and uncertain coefficient, and conceptual redundancy with ff_wyd and `(1|wy)` makes a strong case. bmod4 is your model.
 
 ### interpretation
 
@@ -1099,6 +1220,65 @@ prior_summary(bmod5)
 
 ```
 
+Scrap `bmod7` — the Rhat values are catastrophic (3.1–3.8, should be ≤1.01). The chains never converged, Bulk_ESS of 4-5 (should be \>\>100), and that intercept estimate of -27,000 with a massive SE tells us that the model is completely unidentified. This isn't a biological signal problem, it's a severe collinearity/identifiability problem.
+
+I checked for a correlation between the timing of the first flush (`ff_wyd`) and the magnitude of that event (`yolo_sac`) using `cor(ff_data$ff_wyd, ff_data$yolo_sac, use = "complete.obs")` but there's no correlation (result = -0.0602). For this reason, I dropped `ff_wyd * yolo_sac` from the model and ran `bmod8` (also increasing the treedepth, max = 15). These results essentially confirm that magnitude adds nothing to the model and that we should stick with `bmod4` as our working model.
+
+Updated comparisons
+
+```{r}
+#| label: loo-updated
+
+models_updated <- 
+  list(bmod1 = bmod1, bmod2 = bmod2, bmod3 = bmod3, bmod4 = bmod4, bmod5 = bmod5, bmod6 = bmod6, bmod7 = bmod7, bmod8 = bmod8)
+
+# fit loo for each
+loos_updated <- map(models_updated, loo)
+
+```
+
+## first flush conclusions
+
+The model contenders are:
+
+- **bmod4**: default priors, no `wyt` (water year type)
+
+- **bmod5**: weakly informative priors, no wyt
+
+- **bmod6**: default priors, with `wyt`
+
+The case for **bmod4** as the winner:
+
+- `bmod1/2` aren't comparable (different n) but `bmod2` \> `bmod1` confirms Student-t over Gaussian.
+
+- vs `bmod5`: LOO essentially identical, priors don't matter, default priors are simpler and more transparent — **`bmod4` wins**
+
+- vs `bmod6`: LOO essentially identical, wyt coefficient negligible and uncertain, `(1|wy)` already captures year-type variation — **`bmod4` wins**
+
+- `bmod4`, `bmod5`, `bmod6`, and `bmod8` all have virtually identical `elpd_loo` (-1878.0 to -1878.3) — within noise of each other. Adding `wyt` (`bmod6`), weakly informative priors (`bmod5`), or `yolo_sac` (`bmod8`) buys nothing.
+
+- `bmod3` (no random effect) is substantially worse (`elpd_loo` -1932 vs -1878) — confirms `(1|wy)` is essential.
+
+- `bmod7` is a disaster (`elpd_loo` -11073, `p_loo` of 7322 meaning the model is wildly overfit, 47 bad Pareto k values) — confirms the three-way interaction was completely unidentified.
+
+Our model is `bmod4`:
+
+`wyd ~ 1 + ff_wyd * percentile + region + wy_meanCentered + (1 | wy)`
+
+The decision is defensible on three grounds: predictive performance (LOO), parsimony, and the biological argument that `ff_wyd + (1|wy) + wy_meanCentered` already capture what `wyt` would add. The `p_loo` for `bmod4` (\~49) vs `bmod3` (\~14) is worth noting — the random effects are consuming \~35 effective parameters, which is expected with 45 year levels and confirms the model is using that structure meaningfully rather than overfitting.
+
+### model output specifics
+
+We're explaining `wyd` (day of the water year when benchmarks are reached--10, 50 and 90% of the cohort) as a function of the interaction between first flush timing (`ff_wyd`) and which benchmark we're meeting (`percentile`) plus the `region` of the Delta we're sampling plus the year (`wy_meanCentered`, because years are expected to differ for a variety of potential reasons) plus the water year intercept (`(1 | wy)`). We used the student distribution (vs gaussian or other) because of heavy tails--outliers at both extremes (`nu`=4.3). All `Rhat` = 1; the model converged cleanly. The variance around the water year intercept (`sd(Intercept)`) is roughly 7 days; this tells us how much average benchmark timing varies across water years after accounting for predictors. `sigma` (\~8.85 days) is the residual observation-level noise — unexplained variation within years across regions and benchmarks.
+
+For every day the first flush event arrives later, we expect migration timing to be pushed later about 0.22 days; credible intervals are reasonably tight. Later benchmarks are reached later--no surprise; this is how they're calculated! Fish reach Lower Sacramento River and North Delta before they reach the Central Delta by about 8 and 2.5 days respectively. Timing at the South Delta isn't substantially different from arrival at the Central Delta. There's a trend with respect to year (`wy_meanCentered`): over the course of this study, for every year, migration generally happens sooner by about 0.3 days, nearly 2 weeks over the 46 year time series. The main effect of `ff_wyd` (0.22) applies to the d10 benchmark (the reference level). The interaction terms modify that slope for the other benchmarks:
+
+- d50 slope = 0.22 + (-0.16) = 0.06: later first flush barely affects when 50% of fish have passed
+
+- d90 slope = 0.22 + (-0.24) = -0.02: essentially zero effect of first flush timing on d90
+
+Thus, **first flush timing primarily affects early migrants**. When the first flush arrives late, the leading edge of migration is pushed later, but the bulk and tail of the migration are largely unaffected — they arrive on a more fixed schedule regardless of when the first flush occurred. Effective sample size (ESS) values (1200-6000) are well above any threshold of concern indicating that our posterior summaries are stable.
+
 ## environmental predictability
 
 to do (working with `thresholds_annual`):
@@ -1117,210 +1297,39 @@ to do (working with `thresholds_annual`):
 
 ```{r}
 #| label: env-pred  
-#| 
 
-# find wyd when each threshold (10, 50, 90) is first crossed during Jan-Mar period
-thresholds_JanMar <- daily_site %>%
-  filter(wyd >= 93 & wyd <= 182) %>%
-  group_by(region_label, station, wy) %>%
-  arrange(wyd) %>%
-  mutate(
-    annual_total = sum(daily_total),
-    cumul_percent = 100 * cumsum(daily_total) / annual_total
-  ) %>%
-  summarise(
-    d10 = wyd[which(cumul_percent >= 10)[1]],
-    d50 = wyd[which(cumul_percent >= 50)[1]],
-    d90 = wyd[which(cumul_percent >= 90)[1]],
-    .groups = "drop"
-  )
+# start w daily_site, convert month+wyd to date, data are counts in daily_total
+# sum by weeks so should have regularized ts
 
-# find wyd when each threshold (10, 50, 90) is first crossed over entire WY
-
-thresholds_annual <-
-  daily_site %>%
-  group_by(region_label, station, wy) %>%
-  arrange(wyd) %>%
-  mutate(
-    annual_total = sum(daily_total),
-    cumul_percent = 100 * cumsum(daily_total) / annual_total
-  ) %>%
-  summarise(
-    d10 = wyd[which(cumul_percent >= 10)[1]],
-    d50 = wyd[which(cumul_percent >= 50)[1]],
-    d90 = wyd[which(cumul_percent >= 90)[1]],
-    .groups = "drop"
-  ) %>% 
-  # calc accumul rate...not really a rate but time interval freq equals 0 (ie (50-10)/0 = Inf), so have to think about this
-  # calc mean-centered water year for better model performance
-  mutate(accumul_rate = d50 - d10,
-         wy_meanCentered = wy - mean(wy)) %>% 
-  left_join(storms,
-            by = "wy",
-            keep = FALSE) %>% 
-  select(-c(id, date)) %>% 
-  filter(!is.na(ff_wyd)) %>% 
-  relocate(ff_wyd, .after = "wy_meanCentered")
-
-# dev matrix for calc Colwell's env pred
-# convert wyd to week-of-water-year
-colwell_data <- daily_site %>%
+envpred_ts <- daily_site %>%
   filter(wy >= 1998) %>%
-  group_by(region_label, station, wy) %>%
-  arrange(wyd) %>%
-  mutate(
-    annual_total = sum(daily_total),
-    cumul_percent = 100 * cumsum(daily_total) / annual_total
-  ) %>%
-  summarise(
-    d10 = wyd[which(cumul_percent >= 10)[1]],
-    d50 = wyd[which(cumul_percent >= 50)[1]],
-    d90 = wyd[which(cumul_percent >= 90)[1]],
-    .groups = "drop"
-  ) %>%
-  # median crossing date across stations within region-year
-  group_by(region_label, wy) %>%
-  summarise(across(c(d10, d50, d90), \(x) median(x, na.rm = TRUE)),
-            .groups = "drop") %>%
-  # convert wyd to water year month (1=Oct, 2=Nov, ... 12=Sep)
-  mutate(across(c(d10, d50, d90),
-                \(x) cut(x,
-                         breaks = c(0, 31, 61, 92, 123, 151, 182, 212, 243, 273, 304, 334, 366),
-                         labels = 1:12),
-                .names = "{.col}_month"))
+  mutate(Date = as.Date(paste0(wy - 1, "-10-01")) + (wyd - 1)) %>%
+  group_by(region_label, Date) %>%
+  summarise(mean_catch = mean(daily_total, na.rm = TRUE), .groups = "drop") %>%
+  arrange(region_label, Date)
 
-# for each region, pivot and count
-colwell_matrix <- colwell_data %>%
-  pivot_longer(cols = ends_with("_month"),
-               names_to = "benchmark", values_to = "month") %>%
-  filter(!is.na(month)) %>%
-  group_by(region_label, benchmark, month) %>%
-  summarise(count = n(), .groups = "drop") %>%
-  # fill in zero-count months
-  complete(region_label, benchmark, month = factor(1:12), fill = list(count = 0))
-
-# calc P, M, C, Colwell's metrics for predictability, contingency and constancy
-colwell_stats <- colwell_matrix %>%
+# requires the package 'envPred'
+envpred_results <- envpred_ts %>%
   group_by(region_label) %>%
   group_modify(~ {
-    
-    # wide matrix: rows = months (1-12), cols = benchmarks (d10, d50, d90)
-    mat <- .x %>%
-      mutate(month = as.integer(month)) %>%
-      pivot_wider(names_from = benchmark, values_from = count, values_fill = 0) %>%
-      arrange(month) %>%
-      select(-month) %>%
-      as.matrix()
-    
-    N <- sum(mat)
-    s <- ncol(mat)       # number of states = 3
-    Z <- log(s)          # normalizing constant; switch to log2() if you want bits
-    
-    # cell proportions and marginals
-    p_ij <- mat / N
-    p_i  <- rowSums(p_ij)   # time interval marginals
-    p_j  <- colSums(p_ij)   # state marginals
-    
-    # 0 * log(0) = 0 by convention
-    xlogx <- function(x) ifelse(x == 0, 0, x * log(x))
-    
-    HX  <- -sum(xlogx(p_j))    # uncertainty in state
-    HY  <- -sum(xlogx(p_i))    # uncertainty in time
-    HXY <- -sum(xlogx(p_ij))   # joint uncertainty
-    
-    C <- 1 - HX / Z             # constancy
-    M <- (HX + HY - HXY) / Z   # contingency
-    P <- C + M                  # predictability
-    
-    tibble(C = round(C, 3), 
-           M = round(M, 3), 
-           P = round(P, 3))
+    result <- env_stats(
+      time_series = .x$mean_catch,
+      dates = .x$Date,
+      n_states = 11,
+      delta = 7,
+      is_uneven = TRUE,
+      interpolate = TRUE,
+      show_warns = FALSE,
+      noise_method = "lomb_scargle"
+    )
+    as_tibble(result)
   })
 
-colwell_stats
-
-# why the NAs for Sac R, SF/SP bays, SJR? is this a data issue?
-colwell_matrix %>%
-  filter(region_label %in% c("Sacramento River", 
-                             "San Francisco & San Pablo Bays", 
-                             "San Joaquin River")) %>%
-  group_by(region_label) %>%
-  summarise(total_count = sum(count))
-# the total counts are 0...how is this possible? will have to look into this
-
-# C=0 (constancy): no surprise that benchmarks are reached in different months
-# during different years, but surely there must be some overlap and C would be low but not 0. will have to look into this too
-
-# Which months contribute most to M (contingency)? If we can determine this, that'd tell me whether predictability is concentrated in a seasonal window or spread out across the year.
-colwell_monthly <- colwell_matrix %>%
-  group_by(region_label) %>%
-  group_modify(~ {
-    
-    mat <- .x %>%
-      mutate(month = as.integer(month)) %>%
-      pivot_wider(names_from = benchmark, values_from = count, values_fill = 0) %>%
-      arrange(month) %>%
-      select(-month) %>%
-      as.matrix()
-    
-    N <- sum(mat)
-    s <- ncol(mat)
-    Z <- log(s)
-    
-    p_ij <- mat / N
-    p_i  <- rowSums(p_ij)
-    p_j  <- colSums(p_ij)
-    
-    # each cell's contribution to M
-    # M_ij = (p_ij * log(p_ij / (p_i * p_j))) / Z
-    contrib <- matrix(NA, nrow = nrow(mat), ncol = ncol(mat))
-    for (i in 1:nrow(mat)) {
-      for (j in 1:ncol(mat)) {
-        if (is.na(p_ij[i,j]) || p_ij[i,j] == 0 || 
-            is.na(p_i[i])    || p_i[i] == 0    || 
-            is.na(p_j[j])    || p_j[j] == 0) {
-          contrib[i,j] <- 0
-        } else {
-          contrib[i,j] <- p_ij[i,j] * log(p_ij[i,j] / (p_i[i] * p_j[j])) / Z
-        }
-      }
-    }
-    
-    colnames(contrib) <- colnames(mat)
-    
-    as_tibble(contrib) %>%
-      mutate(month = 1:12)
-  }) %>%
-  pivot_longer(cols = c(d10_month, d50_month, d90_month),
-               names_to = "benchmark", values_to = "M_contrib") %>%
-  mutate(
-    month = factor(month, levels = 1:12,
-                   labels = c("Oct","Nov","Dec","Jan","Feb","Mar",
-                              "Apr","May","Jun","Jul","Aug","Sep"))
-  )
-
-# plot which months contribute most to M across each region; is predictability concentrated in a narrow seasonal window or spread out across the year?
-colwell_monthly %>% 
-  filter(!region_label %in% c("Sacramento River", "San Francisco & San Pablo Bays", "San Joaquin River")) %>% 
-  mutate(region_label = factor(region_label, 
-                               levels = c("Lower Sacramento River", "North Delta", "Central Delta", "South Delta"))) %>% 
-  mutate(benchmark = case_match(benchmark, 
-                                "d10_month" ~ "10%", 
-                                "d50_month" ~ "50%", 
-                                "d90_month" ~ "90%",
-                                # keeps unmatched values unchanged (shouldn't be needed)
-                                .default = benchmark)) %>%
-  ggplot(aes(x = month, y = M_contrib, fill = benchmark)) +
-  geom_col() +
-  facet_wrap(~ region_label) +
-  scale_fill_viridis_d() +
-  theme_bw() +
-  labs(x = "Month (water year)",
-       y = "Contribution to M (contingency)",
-       fill = "Benchmark")
-
-ggsave(here("salmon/plots/monthly_contrib_predictability.png"))
-
+envpred_results %>%
+  pivot_longer(-region_label, names_to = "metric", values_to = "value") %>%
+  pivot_wider(names_from = region_label, values_from = value) %>%
+  mutate(across(-metric, ~ ifelse(metric %in% c("series_n", "n_na", "n_yrs", "n_months", "n_days"), as.integer(.x), .x))) |> 
+  select(metric, "Lower Sacramento River", "North Delta", "Central Delta", "South Delta")
 
 ```
 

@@ -540,9 +540,11 @@ bbox <- st_bbox(
   crs = st_crs(4326)
 ) %>% st_as_sfc()
 
-# get NHD flowlines within the area, save!
-flowlines <- get_nhdplus(AOI = bbox, realization = "flowline")
-write_rds(flowlines, here("salmon/data/processed/flowlines"))
+# get NHD flowlines within the area, save! 
+# takes a LONG time to retrieve
+# flowlines <- get_nhdplus(AOI = bbox, realization = "flowline")
+# write_rds(flowlines, here("salmon/data/processed/flowlines"))
+flowlines <- read_rds(here("salmon/data/processed/flowlines"))
 
 # filter to meaningful streams (avoids tiny ditches cluttering the map)
 flowlines_filtered3 <- flowlines %>%
@@ -627,7 +629,10 @@ beach_seine_stations <-
   scale_size_identity() +
   coord_sf(xlim = c(-122.55, -121.2), ylim = c(37.75, 39.3),
            crs = st_crs(4326), default_crs = st_crs(4326), expand = FALSE) +
-  labs(title = "Selected Beach Seine Stations", color = "Region") +
+  labs(title = "Selected Beach Seine Stations", 
+       x = "Longitude",
+       y = "Latitude",
+       color = "Region") +
   theme_bw()
 
 ggsave(here("salmon/plots/beach_seine_stations.png"))
