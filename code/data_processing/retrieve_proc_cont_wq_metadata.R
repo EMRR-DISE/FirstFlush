@@ -23,38 +23,30 @@ library(conflicted)
 # Declare package conflict preferences
 conflicts_prefer(dplyr::filter())
 
-# Source data functions
-source(here("code/functions/utils.R"))
-
+# Source data download functions
+source(here("code/functions/cwq_download.R"))
 
 # Define Spatial Extent -----------------------------------------------------------------------
 
-# Define the spatial extent of the continuous water quality stations of interest as the legal Delta
-# and Suisun Marsh and Bay. Use the R_Delta shapefile from deltamapr which is the legal Delta
-# boundary and combine the Suisun Marsh and Bay Subregions from the EDSM shapefile in deltamapr.
+# Define the spatial extent of the continuous water quality stations of interest as the legal
+# Delta, Suisun Marsh and Bay, and San Pablo Bay. Use the R_Delta shapefile from deltamapr which
+# is the legal Delta boundary and combine the Suisun Marsh and Bay and San Pablo Bay Strata
+# polygons from the LTM design team effort.
 
-# Import EDSM subregions from deltamapr and only keep Suisun Marsh and Bay Subregions
-sf_suisun <- R_EDSM_Subregions_Mahardja_FLOAT %>%
-  filter(
-    SubRegion %in%
-      c(
-        "Lower Sacramento River",
-        "Confluence",
-        "Suisun Marsh",
-        "Honker Bay",
-        "Grizzly Bay",
-        "Mid Suisun Bay",
-        "West Suisun Bay"
-      )
-  ) %>%
-  st_union()
+# Import Strata polygons and remove Central and South SF Bays
+sf_strata <-
+  read_sf(
+    here("data/processed/spatial/first_flush_spatial_data.gpkg"),
+    layer = "design_strata"
+  ) |>
+  filter(!Stratum %in% c("Out of Bounds", "Central SF Bay", "South SF Bay"))
 
-# Combine Suisun Marsh and Bay to the legal Delta boundary - this is the boundary used to restrict
-# stations
-sf_delta_suisun <- R_Delta %>%
-  st_transform(st_crs(sf_suisun)) %>%
+# Combine Suisun Marsh and Bay and San Pablo Bay Strata to the legal Delta boundary - this is
+# the boundary used to restrict stations
+sf_boundary <- R_Delta %>%
+  st_transform(st_crs(sf_strata)) %>%
   select(geometry) %>%
-  st_union(sf_suisun) %>%
+  st_union(st_union(sf_strata)) %>%
   # Transform to crs 4326 to align with station coordinates
   st_transform(crs = 4326) %>%
   # Resolve topology errors
@@ -63,14 +55,14 @@ sf_delta_suisun <- R_Delta %>%
 
 # USGS ----------------------------------------------------------------------------------------
 
-# Define a bounding box of sf_delta_suisun to use to filter USGS stations
-sf_delta_bbox <- st_bbox(sf_delta_suisun)
+# Define a bounding box of sf_boundary to use to filter USGS stations
+sf_delta_bbox <- st_bbox(sf_boundary)
 
-# List all USGS stations within the delta-suisun bounding box
+# List all USGS stations within the sf_boundary bounding box
 sf_usgs_sta <- read_waterdata_monitoring_location(bbox = sf_delta_bbox)
 
-# Filter USGS stations to those within sf_delta_suisun
-sf_usgs_sta_filt <- sf_usgs_sta %>% st_filter(sf_delta_suisun)
+# Filter USGS stations to those within sf_boundary
+sf_usgs_sta_filt <- sf_usgs_sta %>% st_filter(sf_boundary)
 
 # Define parameters of interest
 params <- c(
@@ -86,7 +78,7 @@ params <- c(
   "72137" # Discharge, tidally-filtered (cfs)
 )
 
-# Download metadata for parameters of interest for all USGS stations within sf_delta_suisun
+# Download metadata for parameters of interest for all USGS stations within sf_boundary
 df_usgs_sta_meta <-
   # Needs to be broken up to work with API
   tibble(
@@ -115,19 +107,26 @@ df_usgs_sta_meta <-
 
 # Filter metadata to the stations we're interested in
 df_usgs_sta_meta_filt <- df_usgs_sta_meta %>%
-  filter(computation_identifier %in% c("Mean", "Median", "Instantaneous")) %>%
+  filter(computation_identifier %in% c("Mean", "Instantaneous")) %>%
   select(
-    Station_ID = monitoring_location_id,
-    Parameter = parameter_name,
-    Interval = computation_identifier,
-    Start = begin,
-    End = end
-  ) %>%
-  drop_na(Start, End) %>%
+    monitoring_location_id,
+    parameter_name,
+    computation_identifier,
+    begin_utc,
+    end_utc
+  ) |>
+  # select(
+  #   Station_ID = monitoring_location_id,
+  #   Parameter = parameter_name,
+  #   Interval = computation_identifier,
+  #   Start = begin_utc,
+  #   End = end_utc
+  # ) %>%
+  drop_na(begin_utc, end_utc) %>%
   summarize(
-    Start = min(Start, na.rm = TRUE),
-    End = max(End, na.rm = TRUE),
-    .by = c(Station_ID, Parameter, Interval)
+    Start = min(begin_utc, na.rm = TRUE),
+    End = max(end_utc, na.rm = TRUE),
+    .by = c(monitoring_location_id, parameter_name, computation_identifier)
   ) %>%
   # Only include active stations or ones that ended in 2023
   filter(year(End) %in% 2023:year(today()))
@@ -137,30 +136,166 @@ sf_usgs_sta_meta <- df_usgs_sta_meta_filt %>%
   left_join(
     sf_usgs_sta_filt %>%
       select(monitoring_location_id, monitoring_location_name),
-    by = join_by(Station_ID == monitoring_location_id)
+    by = join_by(monitoring_location_id)
   ) %>%
-  rename(Station_Name = monitoring_location_name) %>%
-  relocate(Station_Name, .after = Station_ID) %>%
-  st_as_sf(sf_column_name = "geometry") %>%
-  mutate(across(where(is.POSIXct), \(x) {
-    with_tz(force_tz(x, tzone = "UTC"), tzone = "Etc/GMT+8")
-  }))
+  mutate(
+    Survey = "USGS",
+    Data_Source = "USGS API",
+    Station_ID = monitoring_location_id,
+    Station_Name = monitoring_location_name,
+    Parameter = parameter_name,
+    Interval = computation_identifier,
+    across(where(is.POSIXct), \(x) date(with_tz(x, tzone = "Etc/GMT+8"))),
+    geometry,
+    .keep = "none"
+  ) |>
+  st_as_sf(sf_column_name = "geometry")
+
+
+# DWR - NCRO from EDI publications -----------------------------------------------------------
+
+# Get all data entity names for NCRO EDI publications
+edi_ids_ncro <- c(
+  south_delta = "edi.2180.2",
+  yolo_bypass = "edi.2363.1",
+  rock_slough = "edi.2375.1",
+  central_delta = "edi.2385.1"
+)
+
+edi_data_ent_ncro <-
+  map(edi_ids_ncro, read_data_entity_names) |>
+  map(\(x) filter(x, !str_detect(entityName, "^Instrument")))
+
+# Import station metadata for each publication
+df_ncro_sta_edi <- edi_data_ent_ncro |>
+  map(\(x) filter(x, str_detect(entityName, "^Station"))) |>
+  enframe() |>
+  unnest(value) |>
+  left_join(enframe(edi_ids_ncro, value = "edi_pkg_id"), by = "name") |>
+  mutate(
+    df_data_raw = map2(
+      edi_pkg_id,
+      entityId,
+      \(x, y) {
+        api_with_retry(
+          api_fn = read_data_entity,
+          max_attempts = 5,
+          initial_delay = 2,
+          packageId = x,
+          entityId = y
+        )
+      }
+    ),
+    df_data = map(df_data_raw, read_csv)
+  ) |>
+  select(edi_pkg_id, df_data) |>
+  unnest(df_data)
+
+# Convert station metadata to a sf object and filter to the geographical area of
+# interest (sf_boundary)
+sf_ncro_sta_edi <- df_ncro_sta_edi |>
+  select(
+    edi_pkg_id,
+    Station_Code,
+    Station_Name,
+    Latitude,
+    Longitude,
+    WDL_Station_Code
+  ) |>
+  # Assume all coordinates are in WGS84
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326) |>
+  st_filter(sf_boundary)
+
+# Import data for all entities within sf_boundary from EDI publications
+df_ncro_data_edi <- edi_data_ent_ncro |>
+  map(\(x) filter(x, !str_detect(entityName, "^Station"))) |>
+  enframe() |>
+  unnest(value) |>
+  left_join(enframe(edi_ids_ncro, value = "edi_pkg_id"), by = "name") |>
+  filter(entityName %in% unique(sf_ncro_sta_edi$Station_Code)) |>
+  mutate(
+    df_data_raw = map2(
+      edi_pkg_id,
+      entityId,
+      \(x, y) {
+        api_with_retry(
+          api_fn = read_data_entity,
+          max_attempts = 5,
+          initial_delay = 2,
+          packageId = x,
+          entityId = y
+        )
+      }
+    ),
+    df_data = map(df_data_raw, read_csv)
+  )
+
+# Determine start and end dates for each station-parameter combination
+df_ncro_sta_meta_edi <- df_ncro_data_edi |>
+  mutate(
+    df_sta_summ = map(
+      df_data,
+      \(x) {
+        mutate(x, Date_Time = mdy_hms(Date_Time, tz = "Etc/GMT+8")) |>
+          select(any_of(c(
+            "Station_Code",
+            "Date_Time",
+            "Water_Temperature",
+            "Specific_Conductance",
+            "DO",
+            "Turbidity",
+            "pH",
+            "Chlorophyll"
+          ))) |>
+          pivot_longer(
+            cols = where(is.numeric),
+            names_to = "Parameter",
+            values_to = "result",
+            values_drop_na = TRUE
+          ) |>
+          summarize(
+            Start = min(date(Date_Time)),
+            End = max(date(Date_Time)),
+            .by = c(Station_Code, Parameter)
+          )
+      }
+    ),
+    .keep = "none"
+  ) |>
+  unnest(df_sta_summ)
+
+# Add NCRO station metadata to station info
+sf_ncro_sta_meta_edi <- sf_ncro_sta_edi |>
+  left_join(df_ncro_sta_meta_edi, by = join_by(Station_Code)) |>
+  mutate(
+    Survey = "DWR-NCRO (WQ)",
+    Data_Source = paste0("EDI (", edi_pkg_id, ")"),
+    Station_ID = Station_Code,
+    Station_Name,
+    Parameter,
+    Start,
+    End,
+    Interval = "15-min",
+    geometry,
+    WDL_Station_Code,
+    .keep = "none"
+  )
 
 
 # DWR - NCRO from WDL -------------------------------------------------------------------------
 
 # Import csv file from CNRA data portal with station info for DWR's continuous water quality data
-df_ncro_sta <- read_csv(
+df_ncro_sta_wdl <- read_csv(
   "https://data.cnra.ca.gov/dataset/fcba3a88-a359-4a71-a58c-6b0ff8fdc53f/resource/c2b08f48-acfd-4a5b-9799-0f3e07d83192/download/stations.csv"
 )
 
-# Import csv file from CNRA data portal with links to DWR's continuous water quality data
-df_ncro_sta_meta <- read_csv(
+# Import csv file from CNRA data portal with metadata for DWR's continuous water quality data
+df_ncro_sta_meta_wdl <- read_csv(
   "https://data.cnra.ca.gov/dataset/fcba3a88-a359-4a71-a58c-6b0ff8fdc53f/resource/cdb5dd35-c344-4969-8ab2-d0e2d6c00821/download/station-trace-download-links.csv"
 )
 
 # Find stations where DWR collects parameters of interest
-df_ncro_sta_meta_filt <- df_ncro_sta_meta %>%
+df_ncro_sta_meta_wdl_filt <- df_ncro_sta_meta_wdl %>%
   filter(
     parameter %in%
       c(
@@ -169,44 +304,70 @@ df_ncro_sta_meta_filt <- df_ncro_sta_meta %>%
         "ECat25C",
         "pH",
         "Turbidity",
-        "WaterTemp"
+        "WaterTemp",
+        "StreamFlow",
+        "Velocity"
       ),
-    station_type %in% c("Not known", "Surface Water", "Water Quality"),
-    output_interval == "RAW",
-    # Only include active stations or ones that ended in 2023
-    year(end_time) %in% 2023:2023:year(today())
+    station_type != "Groundwater",
+    output_interval == "RAW"
   )
 
 # Filter station info to only those where DWR collects parameters of interest and are within
-# sf_delta_suisun
-sf_ncro_sta_filt <- df_ncro_sta %>%
-  filter(station_number %in% unique(df_ncro_sta_meta_filt$station_number)) %>%
+# sf_boundary. Also remove stations already accounted for in the NCRO EDI publications above
+sf_ncro_sta_wdl_filt <- df_ncro_sta_wdl %>%
+  filter(
+    station_number %in% unique(df_ncro_sta_meta_wdl_filt$station_number)
+  ) |>
+  filter_out(
+    station_number %in% unique(sf_ncro_sta_meta_edi$WDL_Station_Code)
+  ) |>
+  filter_out(
+    station_number %in%
+      c(
+        "B9504500",
+        "B9504400",
+        "B9505000",
+        "B9512000",
+        "B9545800",
+        "B9409500",
+        "B9525100",
+        "B9510800",
+        "B9520000",
+        "B9502900",
+        "B9506100",
+        "B9561600"
+      )
+  ) |>
   # Convert to sf object, assume all coordinates are in WGS84
-  st_as_sf(coords = c("longitude", "latitude"), crs = 4326) %>%
-  st_filter(sf_delta_suisun)
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326) |>
+  st_filter(sf_boundary) |>
+  # Remove some random stations that I know we don't want included
+  filter_out(str_detect(
+    station_name,
+    "^Blacklock Wetland Breach|Lindsey Slough Tidal Wetland|Westervelt Tidal Wetland|Yolo Bypass Tidal Wetland"
+  ))
 
 # Add metadata to stations we're interested in, standardize for integration
-sf_ncro_sta_meta <- sf_ncro_sta_filt %>%
-  select(station_number, station_name, cdec_id, station_type) %>%
+sf_ncro_sta_meta_wdl <- sf_ncro_sta_wdl_filt %>%
+  select(station_number, station_name, station_type) |>
   left_join(
-    df_ncro_sta_meta_filt %>%
-      select(station_number, parameter, start_time, end_time),
+    df_ncro_sta_meta_wdl_filt |> select(station_number, parameter),
     by = join_by(station_number)
-  ) %>%
+  ) |>
   mutate(
-    Interval = "15-min",
-    across(where(is.POSIXct), \(x) force_tz(x, tzone = "Etc/GMT+8"))
-  ) %>%
-  select(
+    Survey = recode_values(
+      station_type,
+      "Water Quality" ~ "DWR-NCRO (WQ)",
+      "Surface Water" ~ "DWR-NCRO (SW)",
+      "Tide Station" ~ "DWR-NCRO (Tide)"
+    ),
+    Data_Source = "WDL",
     Station_ID = station_number,
     Station_Name = station_name,
-    CDEC_ID = cdec_id,
-    Station_Type = station_type,
     Parameter = parameter,
-    Interval,
-    Start = start_time,
-    End = end_time,
-    geometry
+    Interval = "15-min",
+    geometry,
+    .keep = "none"
   )
 
 
@@ -214,50 +375,101 @@ sf_ncro_sta_meta <- sf_ncro_sta_filt %>%
 
 # Get all data entity names for CEMP EDI publication (edi.1177.8)
 edi_id_cemp <- "edi.1177.8"
-edi_data_ent_cemp <- get_edi_data_entities(edi_id = edi_id_cemp)
+edi_data_ent_cemp <- as_tibble(read_data_entity_names(edi_id_cemp))
 
-# Import CEMP station info from EDI publication
-get_edi_data(edi_id = edi_id_cemp, entity_names = "Station Metadata")
-df_cemp_sta <- read_csv(file.path(tempdir(), "Station Metadata.bin"))
-
-# Import data for each CEMP station from EDI publication
-# All stations are within the geographical area of interest
-get_edi_data(edi_id = edi_id_cemp, entity_names = df_cemp_sta$station)
-df_cemp_data <- df_cemp_sta$station %>%
-  map(\(x) paste0(x, ".bin")) %>%
-  map(\(x) read_csv(file.path(tempdir(), x))) %>%
-  list_rbind()
-
-# Determine start and end dates for each station-parameter combination
-df_cemp_sta_meta <- df_cemp_data %>%
+# Import station metadata
+df_cemp_sta <- edi_data_ent_cemp |>
+  filter(entityName == "Station Metadata") |>
   mutate(
-    datetime = ymd_hms(paste(date, time), tz = "Etc/GMT+8"),
-    .keep = "unused"
-  ) %>%
-  pivot_longer(
-    cols = where(is.numeric),
-    names_to = "Parameter",
-    values_to = "result",
-    values_drop_na = TRUE
-  ) %>%
-  summarize(
-    Start = min(datetime),
-    End = max(datetime),
-    .by = c(station, Parameter)
+    df_data_raw = map(
+      entityId,
+      \(x) {
+        api_with_retry(
+          api_fn = read_data_entity,
+          max_attempts = 5,
+          initial_delay = 2,
+          packageId = edi_id_cemp,
+          entityId = x
+        )
+      }
+    ),
+    df_data = map(df_data_raw, read_csv)
+  ) |>
+  select(df_data) |>
+  unnest(df_data)
+
+# Convert station metadata to a sf object and filter to the geographical area of
+# interest (sf_boundary)
+sf_cemp_sta <- df_cemp_sta |>
+  select(station, description, latitude, longitude) |>
+  # Assume all coordinates are in WGS84
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326) |>
+  st_filter(sf_boundary)
+
+# Import data for all entities within sf_boundary from EDI publication
+df_cemp_data <- edi_data_ent_cemp |>
+  filter_out(
+    entityName %in% c("Station Metadata", "Instrument Specifications")
+  ) |>
+  mutate(
+    df_data_raw = map(
+      entityId,
+      \(x) {
+        api_with_retry(
+          api_fn = read_data_entity,
+          max_attempts = 5,
+          initial_delay = 2,
+          packageId = edi_id_cemp,
+          entityId = x
+        )
+      }
+    ),
+    df_data = map(df_data_raw, read_csv)
   )
 
+# Determine start and end dates for each station-parameter combination
+df_cemp_sta_meta <- df_cemp_data |>
+  mutate(
+    df_sta_summ = map(
+      df_data,
+      \(x) {
+        mutate(
+          x,
+          datetime = ymd_hms(paste(date, time), tz = "Etc/GMT+8"),
+          .keep = "unused"
+        ) |>
+          pivot_longer(
+            cols = where(is.numeric),
+            names_to = "Parameter",
+            values_to = "result",
+            values_drop_na = TRUE
+          ) |>
+          summarize(
+            Start = min(date(datetime)),
+            End = max(date(datetime)),
+            .by = c(station, Parameter)
+          )
+      }
+    ),
+    .keep = "none"
+  ) |>
+  unnest(df_sta_summ)
+
 # Add CEMP station metadata to station info
-sf_cemp_sta_meta <- df_cemp_sta %>%
-  select(
+sf_cemp_sta_meta <- sf_cemp_sta |>
+  left_join(df_cemp_sta_meta, by = join_by(station)) %>%
+  mutate(
+    Survey = "DWR-CEMP",
+    Data_Source = paste0("EDI (", edi_id_cemp, ")"),
     Station_ID = station,
     Station_Name = description,
-    latitude,
-    longitude
-  ) %>%
-  left_join(df_cemp_sta_meta, by = join_by(Station_ID == station)) %>%
-  mutate(Interval = "15-min") %>%
-  # Convert to sf object, assume all coordinates are in WGS84
-  st_as_sf(coords = c("longitude", "latitude"), crs = 4326)
+    Parameter,
+    Start,
+    End,
+    Interval = "15-min",
+    geometry,
+    .keep = "none"
+  )
 
 
 # DWR - WQA from WQP --------------------------------------------------------------------------
@@ -285,21 +497,13 @@ wqa_sta_codes <- c(
   "S-97"
 )
 
-# Filter Suisun Marsh station info to those maintained by the WQA group and within sf_delta_suisun
+# Filter Suisun Marsh station info to those maintained by the WQA group and within sf_boundary
 sf_wqa_sta <- df_suisun_sta %>%
   filter(station_code %in% wqa_sta_codes) %>%
-  select(
-    Station_ID = station_code,
-    Station_Name = station_name,
-    CDEC_ID = cdec_code,
-    latitude,
-    longitude
-  ) %>%
-  # Add CDEC_ID for Hill Slough
-  mutate(CDEC_ID = if_else(Station_ID == "S-4", "HSL", CDEC_ID)) %>%
+  select(station_code, station_name, latitude, longitude) %>%
   # Convert to sf object, assume all coordinates are in WGS84
   st_as_sf(coords = c("longitude", "latitude"), crs = 4326) %>%
-  st_filter(sf_delta_suisun)
+  st_filter(sf_boundary)
 
 # Import all result details from WQP to be filtered
 df_wqp_rd <- wqp_result_details()
@@ -310,7 +514,7 @@ df_wqp_rd_filt <- df_wqp_rd %>%
   filter(
     reading_type_name == "Time Series",
     interval_name == "15 min",
-    station_id %in% unique(sf_wqa_sta$Station_ID),
+    station_id %in% unique(sf_wqa_sta$station_code),
     analyte_name %in%
       c(
         "Chlorophyll",
@@ -335,18 +539,28 @@ df_wqa_sta_meta <- ndf_wqa_data %>%
   unnest(df_data) %>%
   drop_na(value) %>%
   summarize(
-    Start = min(time),
-    End = max(time),
+    Start = min(date(time)),
+    End = max(date(time)),
     .by = c(station_id, analyte_name)
   )
 
 # Add WQA station metadata to station info
 sf_wqa_sta_meta <- sf_wqa_sta %>%
-  left_join(df_wqa_sta_meta, by = join_by(Station_ID == station_id)) %>%
+  left_join(df_wqa_sta_meta, by = join_by(station_code == station_id)) %>%
   # Only include active stations or ones that ended in 2023
   filter(year(End) %in% 2023:year(today())) %>%
-  rename(Parameter = analyte_name) %>%
-  mutate(Interval = "15-min")
+  mutate(
+    Survey = "DWR-WQA",
+    Data_Source = "WQP (DWR internal)",
+    Station_ID = station_code,
+    Station_Name = station_name,
+    Parameter = analyte_name,
+    Start,
+    End,
+    Interval = "15-min",
+    geometry,
+    .keep = "none"
+  )
 
 
 # Combine Metadata ----------------------------------------------------------------------------
@@ -359,21 +573,29 @@ df_params_std <- tibble(
       "Dissolved oxygen",
       "Dissolved Oxygen",
       "dissolvedoxygen",
-      "DissolvedOxygen"
+      "DissolvedOxygen",
+      "DO"
     ),
-    c("ECat25C", "spc", "Specific cond at 25C", "Specific Conductance"),
+    c(
+      "ECat25C",
+      "spc",
+      "Specific cond at 25C",
+      "Specific Conductance",
+      "Specific_Conductance"
+    ),
     c("ph", "pH"),
     c("Suspnd sedmnt conc"),
     c(
       "Temperature, water",
       "Water Temperature",
+      "Water_Temperature",
       "WaterTemp",
       "watertemperature"
     ),
     c("turbidity", "Turbidity", "Turbidity, FNU"),
-    c("Discharge"),
+    c("Discharge", "StreamFlow"),
     c("Discharge,tide fltrd"),
-    c("Mean water velocity")
+    c("Mean water velocity", "Velocity")
   ),
   to = c(
     "Chlorophyll",
@@ -391,15 +613,14 @@ df_params_std <- tibble(
 
 # Combine metadata for all continuous water quality stations
 sf_meta_comb <-
-  list(
-    "USGS" = sf_usgs_sta_meta,
-    "DWR-NCRO" = sf_ncro_sta_meta,
-    "DWR-CEMP" = sf_cemp_sta_meta,
-    "DWR-WQA" = sf_wqa_sta_meta
+  bind_rows(
+    sf_usgs_sta_meta,
+    sf_ncro_sta_meta_edi,
+    sf_ncro_sta_meta_wdl,
+    sf_cemp_sta_meta,
+    sf_wqa_sta_meta
   ) %>%
-  bind_rows(.id = "Source") %>%
-  relocate(CDEC_ID, .after = Station_Name) %>%
-  # Standardize Parameter and Interval columns, consolidate Station_Type and Source columns
+  # Standardize Parameter and Interval columns
   mutate(
     Parameter = recode_values(
       Parameter,
@@ -412,29 +633,28 @@ sf_meta_comb <-
       c("15-min", "Instantaneous") ~ "15-min",
       "Mean" ~ "Daily Mean",
       unmatched = "error"
-    ),
-    Source = case_when(
-      is.na(Station_Type) ~ Source,
-      Station_Type == "Water Quality" ~ paste(Source, "(WQ)"),
-      Station_Type == "Surface Water" ~ paste(Source, "(SW)")
-    ),
-    .keep = "unused"
+    )
   ) %>%
-  arrange(Source, Station_ID, Parameter, Interval)
-
-# Import Region polygons
-sf_regions <- read_sf(
-  here("data/processed/spatial/first_flush_spatial_data.gpkg"),
-  layer = "design_regions"
-)
+  select(
+    Survey,
+    Data_Source,
+    Station_ID,
+    Station_Name,
+    Parameter,
+    Interval,
+    Start,
+    End,
+    geometry
+  ) |>
+  arrange(Survey, Station_ID, Parameter, Interval)
 
 # Export combined metadata and station coordinates to be used in interactive maps
 sf_meta_comb |>
-  # Add Regions
-  st_transform(crs = st_crs(sf_regions)) |>
-  st_join(sf_regions, join = st_intersects) |>
+  # Add Strata
+  st_transform(crs = st_crs(sf_strata)) |>
+  st_join(sf_strata, join = st_intersects) |>
   st_transform(crs = 4326) |>
-  distinct(Source, Station_ID, Region, geometry) |>
+  distinct(Survey, Data_Source, Station_ID, Stratum, geometry) |>
   write_sf(
     here("data/processed/spatial/first_flush_spatial_data.gpkg"),
     layer = "cont_wq_stations"

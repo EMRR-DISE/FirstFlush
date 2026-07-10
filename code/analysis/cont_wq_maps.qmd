@@ -16,15 +16,18 @@ execute:
 # Load packages
 library(tidyverse)
 library(viridisLite)
-library(khroma)
 library(sf)
 library(mapview)
+library(htmltools)
 library(DT)
 library(here)
 library(conflicted)
 
 # Declare package conflict preferences
 conflicts_prefer(dplyr::filter())
+
+# Prevent mapview from dynamically switching to dark maps based on point color contrast
+mapviewOptions(basemaps.color.shuffle = FALSE)
 ```
 
 # Import and Prepare Data
@@ -41,21 +44,26 @@ df_metadata <- readRDS(here("data/processed/wq/cont_wq_metadata.rds"))
 
 # Add metadata to station coordinates
 sf_stations_c1 <- sf_stations %>%
-  left_join(df_metadata, by = join_by(Source, Station_ID)) %>%
+  left_join(df_metadata, by = join_by(Survey, Data_Source, Station_ID)) %>%
   relocate(Station_Name, .after = Station_ID) %>%
-  mutate(across(where(is.POSIXct), \(x) format(x, "%Y-%m-%d")))
+  mutate(
+    across(where(is.Date), \(x) format(x, "%Y-%m-%d")),
+    Survey = factor(Survey)
+  )
 
-# Import Region polygons
-sf_regions <-
+# Import Strata polygons
+sf_strata <-
   read_sf(
     here("data/processed/spatial/first_flush_spatial_data.gpkg"),
-    layer = "design_regions"
+    layer = "design_strata"
   ) |>
-  filter(Region != "Out of Bounds")
+  filter(!Stratum %in% c("Out of Bounds", "Central SF Bay", "South SF Bay"))
 
-# Create color palettes for station points (using Source) and region polygons
-pal_stations <- plasma(n = length(unique(sf_stations_c1$Source)))
-pal_regions <- color("muted")(length(unique(sf_regions$Region)))
+# Create color palettes for station points (using Survey) and region polygons
+survey_names <- levels(sf_stations_c1$Survey)
+pal_stations <-
+  plasma(n = length(survey_names)) |>
+  setNames(survey_names)
 ```
 
 # Interactive Maps
@@ -63,24 +71,27 @@ pal_regions <- color("muted")(length(unique(sf_regions$Region)))
 ```{r}
 ndf_maps <- sf_stations_c1 %>%
   nest(sf_data = everything(), .by = Parameter) %>%
+  mutate(sf_data = map(sf_data, \(x) mutate(x, Survey = fct_drop(Survey)))) |>
   arrange(Parameter) %>%
   mutate(
     maps = map(
       sf_data,
-      \(x) {
+      \(sf_obj) {
+        local_levels <- levels(sf_obj$Survey)
+        local_colors <- pal_stations[local_levels]
+
         mapview(
-          x,
-          zcol = "Source",
-          col.regions = pal_stations,
+          sf_obj,
+          zcol = "Survey",
+          col.regions = unname(local_colors),
           label = "Station_Name",
-          layer.name = "Source",
+          layer.name = "Survey",
           cex = 5
         ) +
           mapview(
-            sf_regions,
-            zcol = "Region",
-            col.regions = pal_regions,
-            layer.name = "Region",
+            sf_strata,
+            label = "Stratum",
+            layer.name = "Strata",
             alpha.regions = 0.4,
             legend = FALSE
           )
@@ -89,76 +100,40 @@ ndf_maps <- sf_stations_c1 %>%
   )
 ```
 
+```{r}
+#| include: false
+# Invisible step to force Quarto/Knitr to load mapview & leaflet HTML dependencies
+tagList(ndf_maps$maps[[1]]@map)
+```
+
 ::: {.panel-tabset}
 
-## `r ndf_maps$Parameter[1]`
-
 ```{r}
+#| results: asis
 #| echo: false
-ndf_maps$maps[[1]]
-```
+# Loop through each row of the nested data frame
+for (i in seq_len(nrow(ndf_maps))) {
+  # Grab the current Parameter name and corresponding map object
+  current_parameter <- ndf_maps$Parameter[i]
+  current_map <- ndf_maps$maps[[i]]
 
-## `r ndf_maps$Parameter[2]`
+  # Print the tab header
+  cat("## ", current_parameter, "\n\n")
 
-```{r}
-#| echo: false
-ndf_maps$maps[[2]]
-```
+  # Render the interactive map
+  # Convert the S4 mapview object into a standard S3 leaflet widget
+  leaflet_widget <- current_map@map
 
-## `r ndf_maps$Parameter[3]`
+  # Adjust dimensions
+  leaflet_widget$width <- "100%"
+  leaflet_widget$height <- 600
 
-```{r}
-#| echo: false
-ndf_maps$maps[[3]]
-```
+  # Wrap the mapview object in a tagList and print it
+  map_html <- tagList(leaflet_widget)
+  print(map_html)
 
-## `r ndf_maps$Parameter[4]`
-
-```{r}
-#| echo: false
-ndf_maps$maps[[4]]
-```
-
-## `r ndf_maps$Parameter[5]`
-
-```{r}
-#| echo: false
-ndf_maps$maps[[5]]
-```
-
-## `r ndf_maps$Parameter[6]`
-
-```{r}
-#| echo: false
-ndf_maps$maps[[6]]
-```
-
-## `r ndf_maps$Parameter[7]`
-
-```{r}
-#| echo: false
-ndf_maps$maps[[7]]
-```
-
-## `r ndf_maps$Parameter[8]`
-
-```{r}
-#| echo: false
-ndf_maps$maps[[8]]
-```
-
-## `r ndf_maps$Parameter[9]`
-
-```{r}
-#| echo: false
-ndf_maps$maps[[9]]
-```
-
-## `r ndf_maps$Parameter[10]`
-
-```{r}
-#| echo: false
-ndf_maps$maps[[10]]
+  cat("\n\n")
+}
 ```
 
 :::
@@ -168,10 +143,10 @@ ndf_maps$maps[[10]]
 ```{r}
 sf_stations_c1 %>%
   st_drop_geometry() %>%
-  select(-c(Station_ID, CDEC_ID)) %>%
+  select(-Station_ID) %>%
   mutate(
     across(c(Start, End), ymd),
-    across(c(Source, Region, Parameter, Interval), factor)
+    across(c(Survey, Data_Source, Stratum, Parameter, Interval), factor)
   ) %>%
   datatable(filter = "top")
 ```
