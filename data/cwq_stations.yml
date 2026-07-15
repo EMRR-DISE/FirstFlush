@@ -1,6 +1,7 @@
 # Continuous water quality station metadata for the targets workflow for data processing
 # Author: Dave Bosworth
 # Contact: David.Bosworth@water.ca.gov
+
 # Define parameter suites used in this yml configuration file
 .parameter_suites:
   # Base USGS WQ suite
@@ -10,10 +11,10 @@
     turbidity: "63680"
 
   # Base NCRO WQ suite
-  core_ncro_sensors: &core_ncro
-    water_temp: WaterTemp
-    sp_cond: ECat25C
-    turbidity: Turbidity
+  # core_ncro_sensors: &core_ncro
+  #   water_temp: WaterTemp
+  #   sp_cond: ECat25C
+  #   turbidity: Turbidity
 
 stations:
   - station_abbr: FPT
@@ -25,6 +26,7 @@ stations:
     parameters:
       <<: *core_usgs
       discharge: "00060"
+      velocity: "72255"
     data_freq: 15-min
 
   - station_abbr: FPT
@@ -45,6 +47,26 @@ stations:
     api_data_id: edi.1177.8
     api_station_id: RVB
     data_freq: 15-min
+
+  - station_abbr: RVB
+    station_name: Sacramento River at Rio Vista
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11455420
+    parameters:
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: RVB
+    station_name: Sacramento River at Rio Vista
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11455420
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
 
   - station_abbr: SJR
     station_name: San Joaquin River McCune Station near Vernalis

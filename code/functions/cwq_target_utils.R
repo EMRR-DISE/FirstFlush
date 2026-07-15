@@ -69,7 +69,8 @@ finish_cwq_data <- function(df_data) {
       turbidity,
       ssc,
       discharge,
-      discharge_tf
+      discharge_tf,
+      velocity_tf
     ) |>
     dplyr::arrange(station_abbr, date)
 }
@@ -111,7 +112,17 @@ generate_station_metadata <- function(station_metadata, processed_data) {
       df_stations,
       by = dplyr::join_by(survey, api_station_id == station_id)
     ) |>
-    dplyr::select(-api_station_id) |>
     tidyr::replace_na(list(stratum = "Out of Bounds")) |>
+    dplyr::select(
+      survey,
+      station_abbr,
+      station_name,
+      stratum,
+      parameters,
+      data_source,
+      api_station_id,
+      latitude,
+      longitude
+    ) |>
     dplyr::arrange(station_abbr, survey)
 }
