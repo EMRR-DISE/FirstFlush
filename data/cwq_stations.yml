@@ -1,3 +1,6 @@
+# Continuous water quality station metadata for the targets workflow for data processing
+# Author: Dave Bosworth
+# Contact: David.Bosworth@water.ca.gov
 # Define parameter suites used in this yml configuration file
 .parameter_suites:
   # Base USGS WQ suite
@@ -6,31 +9,74 @@
     sp_cond: "00095"
     turbidity: "63680"
 
+  # Base NCRO WQ suite
+  core_ncro_sensors: &core_ncro
+    water_temp: WaterTemp
+    sp_cond: ECat25C
+    turbidity: Turbidity
+
 stations:
-  - station_id: FPT
-    station_full_name: Sacramento River at Freeport
-    data_source: USGS
-    data_type: continuous
-    source_id: USGS-11447650
+  - station_abbr: FPT
+    station_name: Sacramento River at Freeport
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11447650
     parameters:
       <<: *core_usgs
       discharge: "00060"
+    data_freq: 15-min
 
-  - station_id: FPT
-    station_full_name: Sacramento River at Freeport
-    data_source: USGS
-    data_type: daily
-    source_id: USGS-11447650
+  - station_abbr: FPT
+    station_name: Sacramento River at Freeport
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11447650
     parameters:
       ssc: "80154"
       water_temp: "00010"
+    data_freq: daily
 
-  # - station_id: SJR_USGS
-  #   station_full_name: San Joaquin River near Vernalis
-  #   data_source: USGS
-  #   source_id: USGS-11303500
+  - station_abbr: RVB
+    station_name: Sacramento River at Rio Vista Bridge
+    survey: DWR-CEMP
+    data_api: EDI
+    api_data_id: edi.1177.8
+    api_station_id: RVB
+    data_freq: 15-min
+
+  - station_abbr: SJR
+    station_name: San Joaquin River McCune Station near Vernalis
+    survey: DWR-CEMP
+    data_api: EDI
+    api_data_id: edi.1177.8
+    api_station_id: SJR
+    data_freq: 15-min
+
+  - station_abbr: SJR
+    station_name: San Joaquin River near Vernalis
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11303500
+    parameters:
+      water_temp: "00010"
+    data_freq: 15-min
+
+  - station_abbr: SJR
+    station_name: San Joaquin River near Vernalis
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11303500
+    parameters:
+      ssc: "80154"
+      water_temp: "00010"
+      discharge: "00060"
+    data_freq: daily
 
   # - station_id: SJJ
   #   station_full_name: San Joaquin River at Jersey Point
-  #   data_source: USGS-continuous
+  #   data_survey: USGS-continuous
   #   source_id: USGS-11337190

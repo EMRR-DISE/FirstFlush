@@ -29,38 +29,84 @@ tar_plan(
   tar_target(
     raw_data,
     download_data(
-      station_id = cwq_station_metadata$station_id,
-      source = cwq_station_metadata$data_source,
-      data_type = cwq_station_metadata$data_type,
-      source_id = cwq_station_metadata$source_id,
-      parameter_code = cwq_station_metadata$param_code,
-      parameter_name = cwq_station_metadata$param_name,
+      station_abbr = cwq_station_metadata$station_abbr,
+      survey = cwq_station_metadata$survey,
+      data_api = cwq_station_metadata$data_api,
+      data_api_type = cwq_station_metadata$data_api_type,
+      api_data_id = cwq_station_metadata$api_data_id,
+      api_station_id = cwq_station_metadata$api_station_id,
+      parameter_code = cwq_station_metadata$parameter_code,
+      parameter_name = cwq_station_metadata$parameter_name,
+      data_freq = cwq_station_metadata$data_freq,
       end_date = global_end_date
     ),
     pattern = map(cwq_station_metadata),
     iteration = "list"
-  ) #,
-  # # Process data dynamically per branch
-  # tar_target(
-  #   processed_data,
-  #   process_data(raw_data),
-  #   pattern = map(raw_data)
-  # ),
-  # # Combine everything back into a single dataset
-  # tar_target(
-  #   combined_dataset,
-  #   bind_rows(processed_data)
-  # ),
-  # # Export the final product to a plain file everyone can read
-  # tar_target(
-  #   exported_csv,
-  #   {
-  #     output_path <- "data/combined_stations_data.csv"
-  #     readr::write_csv(combined_dataset, output_path)
-  #     return(output_path) # Returns the path so targets can track the file
-  #   },
-  #   format = "file"
-  # )
+  ),
+  # Process data dynamically per branch
+  tar_target(
+    processed_data,
+    process_data(
+      df_raw = raw_data,
+      data_api = cwq_station_metadata$data_api,
+      data_api_type = cwq_station_metadata$data_api_type,
+      survey = cwq_station_metadata$survey,
+      end_date = global_end_date
+    ),
+    pattern = map(raw_data, cwq_station_metadata),
+    iteration = "list"
+  ),
+  # Apply Godin filter to continuous (15-min) discharge or velocity data specifically
+  tar_target(
+    tidally_filt_data,
+    apply_godin_filter(
+      df_data = processed_data,
+      parameter_name = cwq_station_metadata$parameter_name,
+      data_freq = cwq_station_metadata$data_freq
+    ),
+    pattern = map(processed_data, cwq_station_metadata),
+    iteration = "list"
+  ),
+  # Calculate daily averages
+  tar_target(
+    daily_avg_data,
+    aggregate_to_daily(
+      df_data = tidally_filt_data,
+      data_freq = cwq_station_metadata$data_freq
+    ),
+    pattern = map(tidally_filt_data, cwq_station_metadata),
+    iteration = "list"
+  ),
+  # Combine everything back into a single dataset
+  combined_data = dplyr::bind_rows(daily_avg_data),
+  # Resolve and merge any overlapping data
+  merged_data = resolve_station_merges(combined_data),
+  # Finish cleaning merged data by pivoting wider and final polishing
+  final_cwq_data = finish_cwq_data(merged_data),
+  # Generate station metadata file from cwq_station_metadata
+  final_station_metadata = generate_station_metadata(
+    cwq_station_metadata,
+    processed_data
+  ),
+  # Export the final cleaned dataset of daily average water quality values to a rds file that
+  # everyone can read
+  tar_file(
+    export_final_cwq_data,
+    {
+      output_path <- "data/processed/wq/cwq_data_dv_all.rds"
+      saveRDS(final_cwq_data, output_path)
+      output_path
+    }
+  ),
+  # Export the station metadata file to a rds file
+  tar_file(
+    export_final_station_metadata,
+    {
+      output_path <- "data/processed/wq/cwq_station_metadata.rds"
+      saveRDS(final_station_metadata, output_path)
+      output_path
+    }
+  )
 )
 
-# Run tar_make() to run the pipeline and tar_read(data_summary) to view the results
+# Run tar_make() to run the pipeline and tar_read(obj) to view the results
