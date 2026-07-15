@@ -20,5 +20,8 @@
         "wint",
         "WQES",
         "wstorms"
-    ]
+    ],
+    "yaml.schemas": {
+        "data/.cwq-schema.json": "data/cwq_stations.yml"
+    }
 }

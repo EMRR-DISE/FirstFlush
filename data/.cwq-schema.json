@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CWQ Stations Schema",
+  "type": "object",
+  "required": ["stations"],
+  "properties": {
+    ".parameter_suites": {
+      "type": "object",
+      "description": "YAML Anchors and reusable configurations"
+    },
+    "stations": {
+      "type": "array",
+      "description": "List of active water quality stations",
+      "items": {
+        "type": "object",
+        "required": ["station_abbr", "survey", "data_api", "data_freq"],
+        "additionalProperties": false,
+        "properties": {
+          "station_abbr": {
+            "type": "string",
+            "description": "Unique abbreviation for the station (e.g., FPT)"
+          },
+          "station_name": {
+            "type": "string",
+            "description": "The full descriptive name of the station"
+          },
+          "survey": {
+            "type": "string",
+            "enum": ["USGS", "DWR-CEMP", "DWR-NCRO (WQ)", "DWR-NCRO (Tide)", "DWR-WQA"],
+            "description": "Name of the agency survey project"
+          },
+          "data_api": {
+            "type": "string",
+            "enum": ["USGS", "EDI", "CNRA", "WQP"],
+            "description": "The specific data portal API type to target"
+          },
+          "data_api_type": {
+            "type": "string",
+            "enum": ["continuous", "daily"],
+            "description": "The sub-frequency endpoint format"
+          },
+          "api_data_id": {
+            "type": "string",
+            "description": "The dataset ID (used for EDI packages)"
+          },
+          "api_station_id": {
+            "type": "string",
+            "description": "The API-specific identifier for the station"
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Map of parameter names to their API codes/identifiers"
+          },
+          "data_freq": {
+            "type": "string",
+            "enum": ["15-min", "daily"],
+            "description": "Data record polling frequency interval"
+          }
+        }
+      }
+    }
+  }
+}
