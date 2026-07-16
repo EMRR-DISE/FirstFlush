@@ -49,7 +49,45 @@
           },
           "parameters": {
             "type": "object",
-            "description": "Map of parameter names to their API codes/identifiers"
+            "description": "Map of parameter names to their API codes/identifiers",
+            "additionalProperties": false,
+            "properties": {
+              "water_temp": {
+                "type": "string",
+                "description": "Water Temperature",
+                "enum": ["00010", "WaterTemp", "Water_Temperature", "Water Temperature"]
+              },
+              "sp_cond": {
+                "type": "string",
+                "description": "Specific Conductance",
+                "enum": ["00095", "ECat25C", "Conductivity_at_25C", "Specific Conductance"]
+              },
+              "turbidity": {
+                "type": "string",
+                "description": "Turbidity",
+                "enum": ["63680", "Turbidity"]
+              },
+              "discharge": {
+                "type": "string",
+                "description": "Discharge",
+                "enum": ["00060", "StreamFlow", "Stream_Flow_Rate"]
+              },
+              "discharge_tf": {
+                "type": "string",
+                "description": "Tidally Filtered Discharge (USGS Only)",
+                "enum": ["72137"]
+              },
+              "velocity": {
+                "type": "string",
+                "description": "Velocity",
+                "enum": ["72255", "Velocity", "Mean_Velocity"]
+              },
+              "ssc": {
+                "type": "string",
+                "description": "Suspended Sediment Concentration (USGS Only)",
+                "enum": ["80154"]
+              }
+            }
           },
           "data_freq": {
             "type": "string",

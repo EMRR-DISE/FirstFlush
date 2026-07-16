@@ -385,7 +385,7 @@ download_cnra_continuous <- function(
   records_cwq_links <- purrr::pluck(payload_cwq_links, "result", "records")
 
   # Safety check: Handle instances where zero records match the filter criteria
-  # Warn and safely return an empty tibble if the parameter has never been collected
+  # Warn and safely return an empty tibble if continuous data has never been collected
   # at the station
   if (length(records_cwq_links) == 0) {
     cli::cli_bullets(c(
@@ -480,4 +480,93 @@ download_local_wdl <- function(
 
   # Import data using qs2::qd_read
   qs2::qd_read(file.path(fp_data_raw, file_name))
+}
+
+# Download continuous WQ data from the DWR internal WQP database
+# Requires authentication and access privileges to the database
+download_wqp <- function(
+  api_station_id,
+  parameter_code,
+  parameter_name,
+  end_date
+) {
+  # Define active program and database to use from the WQP
+  wqp_database <- "production"
+  wqp_program <- "MARSH"
+
+  # Import all result details from WQP to be filtered. Do so safely and catch server responses.
+  df_wqp_rd <- rlang::try_fetch(
+    expr = {
+      suppressWarnings(
+        wqpr::wqp_result_details(wqp_program, wqp_database)
+      )
+    },
+    error = function(cnd) {
+      cli::cli_abort(
+        "WQP API request execution failed",
+        parent = cnd
+      )
+    }
+  )
+
+  # Filter result details to station and parameter of interest
+  df_wqp_rd_filt <- df_wqp_rd |>
+    dplyr::mutate(
+      station_id = stringr::str_extract(station_name, "(?<=\\().+(?=\\))")
+    ) |>
+    dplyr::filter(
+      reading_type_name == "Time Series",
+      interval_name == "15 min",
+      station_id == api_station_id,
+      analyte_name == parameter_code
+    )
+
+  # Safety check: Handle instances where zero records match the filter criteria
+  # Warn and safely return an empty tibble if the parameter has never been collected
+  # at the station
+  if (nrow(df_wqp_rd_filt) == 0) {
+    cli::cli_bullets(c(
+      "!" = "There is no record of continuous {.val {parameter_name}} data being collected at {.val {api_station_id}}",
+      "i" = "Returning an empty tibble"
+    ))
+    return(tibble::tibble())
+  }
+
+  # Import data from the WQP database. Do so safely and catch server responses.
+  df_data <- rlang::try_fetch(
+    expr = {
+      df_wqp_rd_filt |>
+        dplyr::select(result_id, version) |>
+        purrr::pmap(function(result_id, version) {
+          wqpr::wqp_result_data(
+            result.id = result_id,
+            version = version,
+            # Add 1 day to end date to make sure all data is downloaded through end_date
+            end.date = end_date + 1,
+            program = wqp_program,
+            database = wqp_database
+          )
+        }) |>
+        purrr::list_flatten() |>
+        purrr::list_rbind()
+    },
+    error = function(cnd) {
+      cli::cli_abort(
+        "WQP API request execution failed",
+        parent = cnd
+      )
+    }
+  )
+
+  # Safety check: Handle instances where df_data contains zero records
+  if (nrow(df_data) == 0) {
+    cli::cli_bullets(c(
+      "!" = "No matching records found for {.val {parameter_name}} at {.val {api_station_id}}",
+      "i" = "Returning an empty tibble"
+    ))
+    return(tibble::tibble())
+  }
+
+  # Filter to end_date
+  df_data |> dplyr::filter(lubridate::date(time) <= end_date)
 }

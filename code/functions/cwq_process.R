@@ -91,7 +91,9 @@ clean_usgs_continuous <- function(df_raw) {
       value
     ) |>
     # Make sure all timestamps fall on an exact 15-minute interval
-    dplyr::mutate(datetime = lubridate::round_date(datetime, unit = "15 minute")) |>
+    dplyr::mutate(
+      datetime = lubridate::round_date(datetime, unit = "15 minute")
+    ) |>
     # Remove any overlapping timestamps
     dplyr::distinct(datetime, .keep_all = TRUE) |>
     # Fill in any missing timestamps
@@ -140,6 +142,8 @@ clean_edi_dwr_cemp <- function(df_raw, end_date) {
       turbidity
     ) |>
     dplyr::filter(lubridate::date(datetime) <= end_date) |>
+    # Remove any overlapping timestamps
+    dplyr::distinct(datetime, .keep_all = TRUE) |>
     # Fill in any missing timestamps
     fill_missing_datetime() |>
     tidyr::fill(survey, station_abbr, data_freq) |>
@@ -174,6 +178,8 @@ clean_cnra_continuous_dwr_ncro_gen <- function(df_raw, end_date) {
       value = tidyselect::any_of(c("Point", "Inst"))
     ) |>
     dplyr::filter(lubridate::date(datetime) <= end_date) |>
+    # Remove any overlapping timestamps
+    dplyr::distinct(datetime, .keep_all = TRUE) |>
     # Fill in any missing timestamps
     fill_missing_datetime() |>
     tidyr::fill(survey, station_abbr, data_freq, parameter)
@@ -181,13 +187,8 @@ clean_cnra_continuous_dwr_ncro_gen <- function(df_raw, end_date) {
   return(df_clean)
 }
 
-clean_cnra_continuous_dwr_ncro_wq <- function(df_raw, end_date) {
-  clean_cnra_continuous_dwr_ncro_gen(df_raw, end_date)
-}
-
-clean_cnra_continuous_dwr_ncro_tide <- function(df_raw, end_date) {
-  clean_cnra_continuous_dwr_ncro_gen(df_raw, end_date)
-}
+clean_cnra_continuous_dwr_ncro_wq <- clean_cnra_continuous_dwr_ncro_gen
+clean_cnra_continuous_dwr_ncro_tide <- clean_cnra_continuous_dwr_ncro_gen
 
 # Process DWR-NCRO (WQ) or (Tide) continuous (15-min) data downloaded from the WDL and saved
 # locally for a single target branch. This is a general function to be used in both wq and tide
@@ -211,6 +212,8 @@ clean_local_wdl_dwr_ncro_gen <- function(df_raw, end_date) {
       value = tidyselect::contains(c("Raw Point Data"))
     ) |>
     dplyr::filter(lubridate::date(datetime) <= end_date) |>
+    # Remove any overlapping timestamps
+    dplyr::distinct(datetime, .keep_all = TRUE) |>
     # Fill in any missing timestamps
     fill_missing_datetime() |>
     tidyr::fill(survey, station_abbr, data_freq, parameter)
@@ -218,10 +221,34 @@ clean_local_wdl_dwr_ncro_gen <- function(df_raw, end_date) {
   return(df_clean)
 }
 
-clean_local_wdl_dwr_ncro_wq <- function(df_raw, end_date) {
-  clean_local_wdl_dwr_ncro_gen(df_raw, end_date)
-}
+clean_local_wdl_dwr_ncro_wq <- clean_local_wdl_dwr_ncro_gen
+clean_local_wdl_dwr_ncro_tide <- clean_local_wdl_dwr_ncro_gen
 
-clean_local_wdl_dwr_ncro_tide <- function(df_raw, end_date) {
-  clean_local_wdl_dwr_ncro_gen(df_raw, end_date)
+# Process DWR-WQA continuous (15-min) data from the WQP database for a single target branch
+clean_wqp_dwr_wqa <- function(df_raw) {
+  df_clean <- df_raw |>
+    # Make sure timezone is set to PST and that all timestamps fall on an exact 15-minute interval
+    dplyr::mutate(
+      datetime = lubridate::round_date(
+        lubridate::force_tz(time, tzone = "Etc/GMT+8"),
+        unit = "15 minute"
+      )
+    ) |>
+    # Remove all values flagged with a qaqc_flag_id as X = "bad"
+    dplyr::filter_out(qaqc_flag_id == "X") |>
+    dplyr::select(
+      survey,
+      station_abbr,
+      data_freq,
+      datetime,
+      parameter,
+      value
+    ) |>
+    # Remove any overlapping timestamps
+    dplyr::distinct(datetime, .keep_all = TRUE) |>
+    # Fill in any missing timestamps
+    fill_missing_datetime() |>
+    tidyr::fill(survey, station_abbr, data_freq, parameter)
+
+  return(df_clean)
 }

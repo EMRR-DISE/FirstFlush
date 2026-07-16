@@ -21,6 +21,12 @@
     discharge: StreamFlow
     velocity: Velocity
 
+  # Base WQA WQ suite for WQP downloads
+  core_wqa_wq_sensors: &core_wqa
+    water_temp: Water Temperature
+    sp_cond: Specific Conductance
+    turbidity: Turbidity
+
 stations:
   - station_abbr: FPT
     station_name: Sacramento River at Freeport
@@ -145,6 +151,55 @@ stations:
       discharge_tf: "72137"
     data_freq: daily
 
+  - station_abbr: FMB
+    station_name: First Mallard Branch near Fairfield CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-381142122015801
+    parameters:
+      <<: *core_usgs
+      discharge: "00060"
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: NSL
+    station_name: Montezuma Slough at National Steel
+    survey: DWR-WQA
+    data_api: WQP
+    api_station_id: S-64
+    parameters:
+      <<: *core_wqa
+    data_freq: 15-min
+
+  - station_abbr: NSL
+    station_name: Montezuma Slough at National Steel
+    survey: DWR-NCRO (Tide)
+    data_api: CNRA
+    data_api_type: continuous
+    api_station_id: E33670Q
+    parameters:
+      <<: *core_ncro_tide
+    data_freq: 15-min
+
+  - station_abbr: BDL
+    station_name: Montezuma Slough near Beldons Landing
+    survey: DWR-WQA
+    data_api: WQP
+    api_station_id: S-49
+    parameters:
+      <<: *core_wqa
+    data_freq: 15-min
+
+  - station_abbr: GOD
+    station_name: Suisun Slough at Godfather
+    survey: DWR-WQA
+    data_api: WQP
+    api_station_id: S-37
+    parameters:
+      <<: *core_wqa
+    data_freq: 15-min
+
   - station_abbr: SJR
     station_name: San Joaquin River McCune Station near Vernalis
     survey: DWR-CEMP
@@ -174,8 +229,3 @@ stations:
       water_temp: "00010"
       discharge: "00060"
     data_freq: daily
-
-  # - station_id: SJJ
-  #   station_full_name: San Joaquin River at Jersey Point
-  #   data_survey: USGS-continuous
-  #   source_id: USGS-11337190

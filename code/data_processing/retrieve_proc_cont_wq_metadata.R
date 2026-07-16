@@ -115,13 +115,6 @@ df_usgs_sta_meta_filt <- df_usgs_sta_meta %>%
     begin_utc,
     end_utc
   ) |>
-  # select(
-  #   Station_ID = monitoring_location_id,
-  #   Parameter = parameter_name,
-  #   Interval = computation_identifier,
-  #   Start = begin_utc,
-  #   End = end_utc
-  # ) %>%
   drop_na(begin_utc, end_utc) %>%
   summarize(
     Start = min(begin_utc, na.rm = TRUE),
