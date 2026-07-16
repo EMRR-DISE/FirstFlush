@@ -10,11 +10,16 @@
     sp_cond: "00095"
     turbidity: "63680"
 
-  # Base NCRO WQ suite
-  # core_ncro_sensors: &core_ncro
-  #   water_temp: WaterTemp
-  #   sp_cond: ECat25C
-  #   turbidity: Turbidity
+  # Base NCRO WQ suite for CNRA downloads
+  core_ncro_wq_sensors: &core_ncro_wq
+    water_temp: WaterTemp
+    sp_cond: ECat25C
+    turbidity: Turbidity
+
+  # Base NCRO Tide suite for CNRA downloads
+  core_ncro_tide_sensors: &core_ncro_tide
+    discharge: StreamFlow
+    velocity: Velocity
 
 stations:
   - station_abbr: FPT
@@ -39,6 +44,78 @@ stations:
       ssc: "80154"
       water_temp: "00010"
     data_freq: daily
+
+  - station_abbr: SRH
+    station_name: Sacramento River at Hood
+    survey: DWR-CEMP
+    data_api: EDI
+    api_data_id: edi.1177.8
+    api_station_id: SRH
+    data_freq: 15-min
+
+  - station_abbr: GES
+    station_name: Sacramento River below Georgiana Slough
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11447905
+    parameters:
+      <<: *core_usgs
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: GES
+    station_name: Sacramento River below Georgiana Slough
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11447905
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: MIR
+    station_name: Miner Slough near Sacramento River
+    survey: DWR-NCRO (WQ)
+    data_api: CNRA
+    data_api_type: continuous
+    api_station_id: B9147000
+    parameters:
+      <<: *core_ncro_wq
+    data_freq: 15-min
+
+  - station_abbr: MIR
+    station_name: Miner Slough near Sacramento River
+    survey: DWR-NCRO (Tide)
+    data_api: CNRA
+    data_api_type: continuous
+    api_station_id: B91470Q
+    parameters:
+      <<: *core_ncro_tide
+    data_freq: 15-min
+
+  - station_abbr: SXS
+    station_name: Steamboat Slough near Sacramento River
+    survey: DWR-NCRO (WQ)
+    data_api: local
+    data_api_type: WDL
+    api_station_id: B9145000
+    parameters:
+      water_temp: Water_Temperature
+      sp_cond: Conductivity_at_25C
+      turbidity: Turbidity
+    data_freq: 15-min
+
+  - station_abbr: SXS
+    station_name: Steamboat Slough near Sacramento River
+    survey: DWR-NCRO (Tide)
+    data_api: local
+    data_api_type: WDL
+    api_station_id: B91450Q
+    parameters:
+      discharge: Stream_Flow_Rate
+      velocity: Mean_Velocity
+    data_freq: 15-min
 
   - station_abbr: RVB
     station_name: Sacramento River at Rio Vista Bridge

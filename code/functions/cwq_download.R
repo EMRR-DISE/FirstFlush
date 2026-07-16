@@ -451,5 +451,33 @@ download_cnra_continuous <- function(
   raw_cwq_data <- httr2::resp_body_string(resp_cwq_data)
 
   # Parse the text string directly into a clean data frame/tibble
-  readr::read_csv(file = I(raw_cwq_data), skip = 2, show_col_types = FALSE)
+  readr::read_csv(
+    file = I(raw_cwq_data),
+    skip = 2,
+    col_select = tidyselect::any_of(c("Date", "Point", "Inst", "Qual")),
+    name_repair = "unique_quiet",
+    show_col_types = FALSE
+  )
+}
+
+# Import continuous WQ data downloaded from the WDL and saved locally in data/raw
+# (must be in .qdata format)
+download_local_wdl <- function(
+  api_station_id,
+  parameter_code,
+  parameter_name
+) {
+  # Define relative path to data/raw folder
+  fp_data_raw <- "data/raw"
+
+  # Define file name based on api_station_id and parameter_code
+  file_name <- paste0(
+    api_station_id,
+    "_",
+    parameter_code,
+    "_Raw_Point_Data.qdata"
+  )
+
+  # Import data using qs2::qd_read
+  qs2::qd_read(file.path(fp_data_raw, file_name))
 }

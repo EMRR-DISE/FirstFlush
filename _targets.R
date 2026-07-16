@@ -88,13 +88,13 @@ tar_plan(
     cwq_station_metadata,
     processed_data
   ),
-  # Export the final cleaned dataset of daily average water quality values to a rds file that
-  # everyone can read
+  # Export the final cleaned dataset of daily average water quality values to a qdata file that
+  # everyone can read (qdata is a highly compressed format provided by the qs2 package)
   tar_file(
     export_final_cwq_data,
     {
-      output_path <- "data/processed/wq/cwq_data_dv_all.rds"
-      saveRDS(final_cwq_data, output_path)
+      output_path <- "data/processed/wq/cwq_data_dv_all.qdata"
+      qs2::qd_save(final_cwq_data, output_path)
       output_path
     }
   ),

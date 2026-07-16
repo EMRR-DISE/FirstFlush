@@ -31,12 +31,12 @@
           },
           "data_api": {
             "type": "string",
-            "enum": ["USGS", "EDI", "CNRA", "WQP"],
+            "enum": ["USGS", "EDI", "CNRA", "WQP", "local"],
             "description": "The specific data portal API type to target"
           },
           "data_api_type": {
             "type": "string",
-            "enum": ["continuous", "daily"],
+            "enum": ["continuous", "daily", "WDL"],
             "description": "The sub-frequency endpoint format"
           },
           "api_data_id": {
