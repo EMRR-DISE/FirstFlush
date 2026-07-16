@@ -123,6 +123,79 @@ stations:
       velocity: Mean_Velocity
     data_freq: 15-min
 
+  - station_abbr: DWS
+    station_name: Sacramento River Deep Water Ship Channel near Rio Vista
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11455335
+    parameters:
+      <<: *core_usgs
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: DWS
+    station_name: Sacramento River Deep Water Ship Channel near Rio Vista
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11455335
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: C62
+    station_name: Sacramento River Deep Water Ship Channel near Courtland
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11455142
+    parameters:
+      <<: *core_usgs
+    data_freq: 15-min
+
+  - station_abbr: RYI
+    station_name: Cache Slough at Ryer Island
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11455350
+    parameters:
+      <<: *core_usgs
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: RYI
+    station_name: Cache Slough at Ryer Island
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11455350
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: RYF
+    station_name: Cache Slough above Ryer Island Ferry near Rio Vista CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11455385
+    parameters:
+      <<: *core_usgs
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: RYF
+    station_name: Cache Slough above Ryer Island Ferry near Rio Vista CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11455385
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
   - station_abbr: RVB
     station_name: Sacramento River at Rio Vista Bridge
     survey: DWR-CEMP
