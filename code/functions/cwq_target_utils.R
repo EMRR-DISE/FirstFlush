@@ -83,41 +83,9 @@ generate_station_metadata <- function(station_metadata, processed_data) {
     layer = "cont_wq_stations"
   )
 
-  # Add two USGS stations included in the data set to sf_stations because their periods of record
-  # ended before 2023
-  additional_usgs <- dataRetrieval::read_waterdata_monitoring_location(
-    monitoring_location_id = c("USGS-11455335", "USGS-11455350")
-  )
-
-  # Add Strata information to the two additional USGS stations
-  sf_strata <-
-    sf::read_sf(
-      "data/processed/spatial/first_flush_spatial_data.gpkg",
-      layer = "design_strata"
-    ) |>
-    dplyr::filter(
-      !Stratum %in% c("Out of Bounds", "Central SF Bay", "South SF Bay")
-    ) |>
-    dplyr::select(Stratum, geom)
-
-  additional_usgs_c <- additional_usgs |>
-    dplyr::mutate(
-      Survey = "USGS",
-      Data_Source = "USGS API",
-      Station_ID = monitoring_location_id,
-      geometry,
-      .keep = "none"
-    ) |>
-    sf::st_set_geometry("geom") |>
-    sf::st_transform(crs = sf::st_crs(sf_strata)) |>
-    sf::st_join(sf_strata, join = sf::st_intersects) |>
-    sf::st_transform(crs = 4326)
-
-  sf_stations_c <- dplyr::bind_rows(sf_stations, additional_usgs_c)
-
-  # Extract Latitude and Longitude from geom and convert to sf_stations_c to a tibble
-  coords <- sf::st_coordinates(sf_stations_c)
-  df_stations <- sf_stations_c |>
+  # Extract Latitude and Longitude from geom and convert to sf_stations to a tibble
+  coords <- sf::st_coordinates(sf_stations)
+  df_stations <- sf_stations |>
     dplyr::mutate(latitude = coords[, "Y"], longitude = coords[, "X"]) |>
     sf::st_drop_geometry() |>
     dplyr::rename_with(stringr::str_to_snake)

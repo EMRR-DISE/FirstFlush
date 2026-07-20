@@ -121,8 +121,8 @@ df_usgs_sta_meta_filt <- df_usgs_sta_meta %>%
     End = max(end_utc, na.rm = TRUE),
     .by = c(monitoring_location_id, parameter_name, computation_identifier)
   ) %>%
-  # Only include active stations or ones that ended in 2023
-  filter(year(End) %in% 2023:year(today()))
+  # Only include active stations or ones that ended in 2015
+  filter(year(End) %in% 2015:year(today()))
 
 # Add location name and geometry to filtered metadata, standardize for integration
 sf_usgs_sta_meta <- df_usgs_sta_meta_filt %>%
@@ -540,8 +540,8 @@ df_wqa_sta_meta <- ndf_wqa_data %>%
 # Add WQA station metadata to station info
 sf_wqa_sta_meta <- sf_wqa_sta %>%
   left_join(df_wqa_sta_meta, by = join_by(station_code == station_id)) %>%
-  # Only include active stations or ones that ended in 2023
-  filter(year(End) %in% 2023:year(today())) %>%
+  # Only include active stations or ones that ended in 2015
+  filter(year(End) %in% 2015:year(today())) %>%
   mutate(
     Survey = "DWR-WQA",
     Data_Source = "WQP (DWR internal)",
