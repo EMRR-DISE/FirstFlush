@@ -18,7 +18,6 @@ execute:
 # Load packages
 library(tidyverse)
 library(viridisLite)
-library(khroma)
 library(sf)
 library(mapview)
 library(DT)
@@ -38,325 +37,196 @@ conflicts_prefer(dplyr::filter())
 5. Do we need a water temperature hypothesis
 6. Other parameters we are interested in?
 
-# Questions for Group
+# Stations
 
-1. Which stations and parameters to include?
+## Sacramento River Mainstem
 
-    Stations, parameters and periods of record:
+- USGS Sacramento River at Freeport (11447650)
+- DWR-CEMP Sacramento River at Hood (SRH)
+- USGS Sacramento River below Georgiana Slough (11447905)
+- DWR-NCRO (WQES) Miner Slough near Sacramento River (B9147000) - water quality
+- DWR-NCRO (Flow) Miner Slough near Sacramento River (B91470Q) - discharge and velocity
+- DWR-NCRO (WQES) Steamboat Slough near Sacramento River (B9145000) - water quality
+- DWR-NCRO (Flow) Steamboat Slough near Sacramento River (B91450Q) - discharge and velocity
 
-- North Delta Region:
-    - **USGS Sacramento River at Freeport (11447650)**
-        - 15-min Discharge: 2007-current
-        - Tidally-filtered Discharge (15-min and daily mean): 2015-current
-        - 15-min Mean Water Velocity: 2015-current
-        - Daily Mean Water Temperature: 1972-2023
-        - 15-min Water Temperature: 2007-current
-        - 15-min Specific Conductance: 2013-current
-        - 15-min Dissolved Oxygen: 2013-current
-        - **15-min Turbidity: 2009-current**
-        - **Daily Mean Suspended Sediment Concentration: 1956-2023**
-        - 15-min Chlorophyll: 2013-current
-    - *DWR-CEMP Sacramento River at Hood (SRH)?*
-        - 15-min Water Temperature: 2008-2025
-        - 15-min Specific Conductance: 2008-2025
-        - 15-min Dissolved Oxygen: 2008-2025
-        - 15-min Turbidity: 2008-2025
-        - 15-min Chlorophyll: 2008-2025
-    - *USGS Sacramento River below Georgiana Slough (11447905)?*
-        - 15-min Discharge: 1993-current
-        - Tidally-filtered Discharge (15-min and daily mean): 1993-current
-        - 15-min Mean Water Velocity: 2007-current
-        - 15-min Water Temperature: 2009-2025
-        - 15-min Specific Conductance: 2009-2025
-        - 15-min Turbidity: 2009-2025
-    - *USGS Sacramento River above Delta Cross Channel (11447890)?*
-        - 15-min Discharge: 1992-current
-        - Tidally-filtered Discharge (15-min and daily mean): 1992-current
-        - 15-min Mean Water Velocity: 2007-current
-        - 15-min Water Temperature: 2013-2025
-        - 15-min Specific Conductance: 2013-2025
-        - 15-min Dissolved Oxygen: 2013-2025
-        - 15-min Turbidity: 2013-2025
-        - 15-min Chlorophyll: 2014-2025
-    - *Cache Slough stations?*
-- South Delta and Mokelumne River
-    - **DWR-CEMP San Joaquin River at Prisoners Point (PPT)**
-        - 15-min Water Temperature: 2008-2025
-        - 15-min Specific Conductance: 2008-2025
-        - 15-min Dissolved Oxygen: 2008-2025
-        - **15-min Turbidity: 2008-2025**
-        - 15-min Chlorophyll: 2008-2025
-    - *USGS San Joaquin River at Prisoners Point near Terminous (11313460)*
-        - 15-min Discharge: 2006-2025
-        - Tidally-filtered Discharge (15-min and daily mean): 2006-2025
-        - 15-min Mean Water Velocity: 2007-2025
-    - **DWR-NCRO (WQES) Old River at Quimby Island near Bethel Island (B9520000)**
-        - 15-min Water Temperature: 2005-current
-        - 15-min Specific Conductance: 2005-current
-        - **15-min Turbidity: 2009-current**
-    - *USGS Old River at Quimby Island near Bethel Island (11313434)*
-        - 15-min Discharge: 2006-2025
-        - Tidally-filtered Discharge (15-min and daily mean): 2006-2025
-        - 15-min Mean Water Velocity: 2007-2025
-    - **DWR-NCRO (WQES) Middle River near Holt (B9545800)**
-        - 15-min Water Temperature: 2006-current
-        - 15-min Specific Conductance: 2006-current
-        - **15-min Turbidity: 2009-current**
-        - 15-min Chlorophyll: 2010-2025
-    - *USGS Middle River near Holt (11312685)*
-        - 15-min Discharge: 2006-2025
-        - Tidally-filtered Discharge (15-min and daily mean): 2006-2025
-        - 15-min Mean Water Velocity: 2007-2025
-    - **DWR-NCRO (WQES) OBI at USGS Pile (B9525100)**
-        - 15-min Water Temperature: 2008-current
-        - 15-min Specific Conductance: 2008-current
-        - 15-min Dissolved Oxygen: 2022-current
-        - **15-min Turbidity: 2008-current**
-        - 15-min Chlorophyll: 2022-current
-    - *USGS Old River at Bacon Island (11313405)*
-        - 15-min Discharge: 1987-current
-        - Tidally-filtered Discharge (15-min and daily mean): 1987-current
-        - 15-min Mean Water Velocity: 2007-current
-    - **USGS Middle River at Middle River (11312676)**
-        - 15-min Discharge: 1987-current
-        - Tidally-filtered Discharge (15-min and daily mean): 1987-current
-        - 15-min Mean Water Velocity: 2023-current
-        - 15-min Water Temperature: 2009-2025
-        - 15-min Specific Conductance: 2009-2025
-        - 15-min Dissolved Oxygen: 2019-2025
-        - **15-min Turbidity: 2009-2025**
-        - 15-min Chlorophyll: 2023-2025
-    - **USGS Old River near Byron (11313315)**
-        - 15-min Discharge: 1999-current
-        - Tidally-filtered Discharge (15-min and daily mean): 1999-current
-        - 15-min Mean Water Velocity: 2007-current
-        - 15-min Water Temperature: 2009-2025
-        - 15-min Specific Conductance: 2009-2025
-        - **15-min Turbidity: 2009-2025**
-    - **DWR-NCRO (WQES) Grant Line Canal near Clifton Court Forebay (B9529500)**
-        - 15-min Water Temperature: 2007-current
-        - 15-min Specific Conductance: 2007-current
-        - 15-min Dissolved Oxygen: 2007-current
-        - **15-min Turbidity: 2007-current**
-        - 15-min Chlorophyll: 2007-current
-    - *USGS Grant Line Canal near Tracy (11313240)*
-        - 15-min Discharge: 2005-current
-        - Tidally-filtered Discharge (15-min and daily mean): 2005-current
-        - 15-min Mean Water Velocity: 2007-current
-    - **DWR-NCRO (WQES) Old River at Tracy Wildlife Association (B9537800)**
-        - 15-min Water Temperature: 1999-current
-        - 15-min Specific Conductance: 1999-current
-        - 15-min Dissolved Oxygen: 1999-current
-        - **15-min Turbidity: 1999-current**
-        - 15-min Chlorophyll: 2005-current
-    - *DWR-NCRO (Flow) Old River near Tracy Blvd Bridge (B95380Q)*
-        - 15-min Discharge: 2011-current
-        - 15-min Mean Water Velocity: 2011-current
-    - *DWR-CEMP San Joaquin River at Mossdale Bridge (MSD)?*
-        - 15-min Water Temperature: 2007-2025
-        - 15-min Specific Conductance: 2007-2025
-        - 15-min Dissolved Oxygen: 2007-2025
-        - 15-min Turbidity: 2007-2025
-        - 15-min Chlorophyll: 2007-2025
-    - *DWR-NCRO (Flow) San Joaquin River at Mossdale (B95820Q)?*
-        - 15-min Discharge: 2005-current
-        - 15-min Mean Water Velocity: 2005-current
-    - *USGS San Joaquin River below Garwood Bridge at Stockton (11304810)?*
-        - 15-min Discharge: 1995-2025
-        - Tidally-filtered Discharge (15-min and daily mean): 1995-2025
-        - 15-min Mean Water Velocity: 2005-2025
-        - 15-min Water Temperature: 2009-2025
-        - 15-min Specific Conductance: 2009-2025
-        - 15-min Turbidity: 2009-2025
-    - *Mokelumne River stations?*
-- Confluence
-    - **DWR-CEMP Sacramento River at Rio Vista Bridge (RVB)**
-        - 15-min Water Temperature: 2008-2025
-        - 15-min Specific Conductance: 2008-2025
-        - 15-min Dissolved Oxygen: 2008-2025
-        - **15-min Turbidity: 2008-2025**
-        - 15-min Chlorophyll: 2008-2025
-    - *USGS Sacramento River at Rio Vista (11455420)*
-        - 15-min Discharge: 1995-current
-        - Tidally-filtered Discharge (15-min and daily mean): 1995-current
-        - 15-min Mean Water Velocity: 2007-current
-    - **USGS San Joaquin River at Jersey Point (11337190)**
-        - 15-min Discharge: 1994-current
-        - Tidally-filtered Discharge (15-min and daily mean): 1994-current
-        - 15-min Mean Water Velocity: 2007-current
-        - 15-min Water Temperature: 2009-2025
-        - 15-min Specific Conductance: 2009-2025
-        - 15-min Dissolved Oxygen: 2014-2025
-        - **15-min Turbidity: 2009-2025**
-        - 15-min Chlorophyll: 2016-2025
-    - *DWR-CEMP Sacramento River at Chipps Island (MAL)?*
-        - 15-min Water Temperature: 2008-2025
-        - 15-min Specific Conductance: 2008-2025
-        - 15-min Dissolved Oxygen: 2008-2025
-        - 15-min Turbidity: 2008-2025
-        - 15-min Chlorophyll: 2008-2025
-- Suisun Bay and Marsh and Honker Bay
-    - - *DWR-CEMP Honker Bay near Wheeler Point (HON)?*
-        - 15-min Water Temperature: 2015-2025
-        - 15-min Specific Conductance: 2015-2025
-        - 15-min Dissolved Oxygen: 2015-2025
-        - 15-min Turbidity: 2015-2025
-        - 15-min Chlorophyll: 2015-2025
-    - *DWR-CEMP Suisun Bay off Middle Point near Nichols (RYC)?*
-        - 15-min Water Temperature: 2015-2025
-        - 15-min Specific Conductance: 2015-2025
-        - 15-min Dissolved Oxygen: 2015-2025
-        - 15-min Turbidity: 2015-2025
-        - 15-min Chlorophyll: 2015-2025
-    - *DWR-CEMP Grizzly Bay at Dolphin near Suisun Slough (GZL)?*
-        - 15-min Water Temperature: 2015-2025
-        - 15-min Specific Conductance: 2015-2025
-        - 15-min Dissolved Oxygen: 2015-2025
-        - 15-min Turbidity: 2015-2025
-        - 15-min Chlorophyll: 2015-2025
-    - *Montezuma Slough?*
-- Out of bounds
-    - **DWR-CEMP San Joaquin River McCune Station near Vernalis (SJR)**
-        - 15-min Water Temperature: 2005-2025
-        - 15-min Specific Conductance: 2005-2025
-        - 15-min Dissolved Oxygen: 2005-2025
-        - **15-min Turbidity: 2005-2025**
-        - 15-min Chlorophyll: 2005-2025
-    - **USGS San Joaquin River near Vernalis (11303500)**
-        - Daily Mean Discharge: 1923-current
-        - 15-min Discharge: 1986-current
-        - Daily Mean Water Temperature: 1972-2023
-        - 15-min Water Temperature: 2007-current
-        - **Daily Mean Suspended Sediment Concentration: 1956-2023**
-    - *DWR-O&M Clifton Court Forebay (CLC)?*
-        - Daily Water Temperature: 1988-current
-        - Daily Specific Conductance: 1987-current
-        - Daily Turbidity (NTU): 1988-current
-        - Daily Chlorophyll Fluorescence: 1988-current
+## Sacramento River DWSC
 
-## Map
+- USGS Sacramento River Deep Water Ship Channel near Rio Vista (11455335) - only from 2008-2021
+- USGS Sacramento River Deep Water Ship Channel near Courtland (11455142)
+- USGS RYI and RYF combined
+    - USGS Cache Slough at Ryer Island (11455350) - from 2003 to 9/5/2018
+    - USGS Cache Slough above Ryer Island Ferry near Rio Vista CA (11455385) - from 9/6/2018 to 2025
+
+## Cache Slough and Liberty Island
+
+- USGS Cache Slough near Hastings Tract near Rio Vista CA (11455280)
+- USGS Cache Slough at South Liberty Island near Rio Vista CA (11455315)
+
+## North and South Forks Mokelumne River
+
+- DWR-NCRO (WQES) Mokelumne River Near Hwy 12 (MOK) - water quality
+- USGS Mokelumne River at Andrus Island near Terminous CA (11336930) - discharge and velocity
+- USGS Little Potato Slough at Terminous CA (11336790)
+- USGS North Mokelumne near Walnut Grove CA (11336685)
+- USGS South Mokelumne River at New Hope Bridge near Walnut Grove CA (11336680)
+
+## South Delta
+
+- DWR-CEMP San Joaquin River at Prisoners Point (PPT) - water quality
+- USGS San Joaquin River at Prisoners Point near Terminous (11313460) - discharge and velocity
+- DWR-NCRO (WQES) Old River at Quimby Island (ORQ) - water quality
+- USGS Old River at Quimby Island near Bethel Island (11313434) - discharge and velocity
+- DWR-NCRO (WQES) Middle River near Holt (HLT) - water quality
+- USGS Middle River near Holt (11312685) - discharge and velocity
+- DWR-NCRO (WQES) Old River near Bacon Island at USGS Pile (OBI) - water quality
+- USGS Old River at Bacon Island (11313405) - discharge and velocity
+- USGS Middle River at Middle River (11312676)
+- USGS Old River near Byron (11313315)
+- DWR-NCRO (WQES) Victoria Canal near Byron (VCU) - water quality
+- USGS Victoria Canal near Byron (11312672) - discharge and velocity
+- DWR-NCRO (WQES) Old River at Tracy Wildlife Association (TWA) - water quality
+- DWR-NCRO (Flow) Old River near Tracy Blvd Bridge (B95380Q) - discharge and velocity
+- DWR-CEMP San Joaquin River at Mossdale Bridge (MSD) - water quality
+- DWR-NCRO (Flow) San Joaquin River at Mossdale (B95820Q) - discharge and velocity
+- USGS San Joaquin River below Garwood Bridge at Stockton (11304810)
+
+## Confluence
+
+- DWR-CEMP Sacramento River at Rio Vista Bridge (RVB) - water quality
+- USGS Sacramento River at Rio Vista (11455420) - discharge and velocity
+- USGS San Joaquin River at Jersey Point (11337190)
+- DWR-CEMP San Joaquin River at Antioch Ship Canal (ANH)
+- DWR-CEMP Sacramento River at Chipps Island (MAL)
+
+## Suisun Marsh and Montezuma Slough
+
+- USGS First Mallard Branch near Fairfield CA (381142122015801)
+- DWR-WQA Montezuma Slough at National Steel (S-64) - water quality
+- DWR-NCRO (Flow) Montezuma Slough at National Steel (E33670Q) - discharge and velocity
+- DWR-WQA Montezuma Slough near Beldons Landing (S-49)
+- DWR-WQA Suisun Slough at Godfather (S-37)
+
+## Suisun and Honker Bays
+
+- DWR-CEMP Honker Bay near Wheeler Point (HON)
+- DWR-CEMP Suisun Bay off Middle Point near Nichols (RYC)
+- DWR-CEMP Grizzly Bay at Dolphin near Suisun Slough (GZL)
+
+## San Pablo Bay and Carquinez Strait
+
+- DWR-CEMP Suisun Bay at Martinez (MRZ)
+- USGS Suisun Bay at Benicia Bridge near Benicia CA (11455780)
+- USGS Carquinez Strait at Carquinez Bridge near Crockett CA (11455820)
+
+## Out of bounds
+
+- DWR-CEMP San Joaquin River McCune Station near Vernalis (SJR) - water quality
+- USGS San Joaquin River near Vernalis (11303500) - discharge, water temperature (1972-1998), and SSC
+- *DWR-O&M Clifton Court Forebay (CLC)?*
+    - Daily Water Temperature: 1988-current
+    - Daily Specific Conductance: 1987-current
+    - Daily Turbidity (NTU): 1988-current
+    - Daily Chlorophyll Fluorescence: 1988-current
+
+# Parameters
+
+For now, we'll look at the following parameters:
+
+- Water Temperature
+- Specific Conductance
+- Turbidity
+- Suspended Sediment Concentration
+- Tidally-filtered Discharge
+- Discharge (only for SJR)
+- Tidally-filtered Velocity
+
+# Map
 
 ```{r}
-# Import continuous WQ station coordinates
-sf_stations <- read_sf(
-  here("data/processed/spatial/first_flush_spatial_data.gpkg"),
-  layer = "cont_wq_stations"
-)
+# Import metadata for continuous WQ stations in consideration
+df_stations <- readRDS(here("data/processed/wq/cwq_station_metadata.rds"))
 
-# Import continuous WQ station metadata
-df_metadata <- readRDS(here("data/processed/wq/cont_wq_metadata.rds"))
-
-# Add station names to station coordinates
-sf_stations_c1 <- sf_stations %>%
-  left_join(df_metadata, by = join_by(Source, Station_ID)) %>%
-  relocate(Station_Name, .after = Station_ID) |>
-  mutate(across(where(is.POSIXct), date))
-
-# Define stations in consideration
-df_stations_analysis <- tribble(
-  ~Source         , ~Station_ID     ,
-  "USGS"          , "USGS-11447650" ,
-  "DWR-CEMP"      , "SRH"           ,
-  "USGS"          , "USGS-11447905" ,
-  "USGS"          , "USGS-11447890" ,
-  "DWR-CEMP"      , "PPT"           ,
-  "USGS"          , "USGS-11313460" ,
-  "DWR-NCRO (WQ)" , "B9520000"      ,
-  "USGS"          , "USGS-11313434" ,
-  "DWR-NCRO (WQ)" , "B9545800"      ,
-  "USGS"          , "USGS-11312685" ,
-  "DWR-NCRO (WQ)" , "B9525100"      ,
-  "USGS"          , "USGS-11313405" ,
-  "USGS"          , "USGS-11312676" ,
-  "USGS"          , "USGS-11313315" ,
-  "DWR-NCRO (WQ)" , "B9529500"      ,
-  "USGS"          , "USGS-11313240" ,
-  "DWR-NCRO (WQ)" , "B9537800"      ,
-  "DWR-CEMP"      , "MSD"           ,
-  "USGS"          , "USGS-11304810" ,
-  "DWR-CEMP"      , "RVB"           ,
-  "USGS"          , "USGS-11455420" ,
-  "USGS"          , "USGS-11337190" ,
-  "DWR-CEMP"      , "MAL"           ,
-  "DWR-CEMP"      , "HON"           ,
-  "DWR-CEMP"      , "RYC"           ,
-  "DWR-CEMP"      , "GZL"           ,
-  "DWR-CEMP"      , "SJR"           ,
-  "USGS"          , "USGS-11303500"
-)
-
-# Filter to stations in consideration
-sf_stations_c2 <- sf_stations_c1 |>
-  right_join(df_stations_analysis, by = join_by(Source, Station_ID))
-
-# Add info for CLC station
-sf_clc <-
-  tibble(
-    Parameter = c(
-      "Water Temperature",
-      "Specific Conductance",
-      "Turbidity (NTU)",
-      "Chlorophyll Fluorescence"
-    ),
-    Start = ymd(c("1988-03-04", "1987-01-01", "1988-03-10", "1988-03-07"))
-  ) |>
-  expand_grid(
-    Source = "DWR-O&M",
-    Station_ID = "CLC",
-    Station_Name = "Clifton Court Forebay",
-    Latitude = 37.829800,
-    Longitude = -121.557400,
-    Interval = "Daily",
-    End = ymd(today())
-  ) |>
+# Convert metadata to sf object to be used in map
+sf_stations <- df_stations |>
+  dplyr::select(-c(data_source, api_station_id)) |>
   st_as_sf(
-    coords = c("Longitude", "Latitude"),
-    crs = 4326,
-    sf_column_name = "geom"
+    coords = c("longitude", "latitude"),
+    crs = 4326
   )
 
-sf_stations_c3 <-
-  bind_rows(sf_stations_c2, sf_clc) |>
-  mutate(Region = replace_na(Region, "Out of Bounds"))
+# Add info for CLC station
+# sf_clc <-
+#   tibble(
+#     Parameter = c(
+#       "Water Temperature",
+#       "Specific Conductance",
+#       "Turbidity (NTU)",
+#       "Chlorophyll Fluorescence"
+#     ),
+#     Start = ymd(c("1988-03-04", "1987-01-01", "1988-03-10", "1988-03-07"))
+#   ) |>
+#   expand_grid(
+#     Source = "DWR-O&M",
+#     Station_ID = "CLC",
+#     Station_Name = "Clifton Court Forebay",
+#     Latitude = 37.829800,
+#     Longitude = -121.557400,
+#     Interval = "Daily",
+#     End = ymd(today())
+#   ) |>
+#   st_as_sf(
+#     coords = c("Longitude", "Latitude"),
+#     crs = 4326,
+#     sf_column_name = "geom"
+#   )
 
-# Import Region polygons
-sf_regions <-
+# Import Strata polygons
+sf_strata <-
   read_sf(
     here("data/processed/spatial/first_flush_spatial_data.gpkg"),
-    layer = "design_regions"
+    layer = "design_strata"
   ) |>
-  filter(Region != "Out of Bounds")
+  filter(Stratum != "Out of Bounds")
 
-# Create color palettes for station points (using Source) and region polygons
-pal_stations <- plasma(n = length(unique(sf_stations_c3$Source)))
-pal_regions <- color("muted")(length(unique(sf_regions$Region)))
-
-sf_stations_c3 |>
-  distinct(Source, Station_ID, Station_Name, Region, geom) |>
+sf_stations |>
+  mapview(label = "station_abbr", layer.name = "Stations", cex = 5) +
   mapview(
-    zcol = "Source",
-    col.regions = pal_stations,
-    label = "Station_Name",
-    layer.name = "Source",
-    cex = 5
-  ) +
-  mapview(
-    sf_regions,
-    zcol = "Region",
-    col.regions = pal_regions,
-    layer.name = "Region",
+    sf_strata,
+    zcol = "Stratum",
+    label = "Stratum",
+    layer.name = "Strata",
     alpha.regions = 0.4,
     legend = FALSE
   )
 ```
 
-## Station Metadata
+# Station Metadata
 
 ```{r}
-sf_stations_c3 %>%
-  st_drop_geometry() %>%
-  select(-c(Station_ID, CDEC_ID)) %>%
-  mutate(across(c(Source, Region), factor)) %>%
+# Import continuous WQ station metadata
+df_metadata <- readRDS(here("data/processed/wq/cont_wq_metadata.rds")) |>
+  rename_with(str_to_snake)
+
+df_stations |>
+  select(
+    survey,
+    station_abbr,
+    station_name,
+    stratum,
+    data_source,
+    api_station_id
+  ) |>
+  left_join(
+    df_metadata |> select(-station_name),
+    by = join_by(survey, data_source, api_station_id == station_id)
+  ) |>
+  select(-api_station_id) |>
+  mutate(
+    across(
+      c(survey, station_abbr, stratum, parameter, interval),
+      factor
+    )
+  ) |>
   datatable(filter = "top")
 ```
 

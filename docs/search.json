@@ -39,7 +39,7 @@
     "href": "code/analysis/cont_wq_analysis_plan.html",
     "title": "First Flush - Water Quality Analysis Plan",
     "section": "",
-    "text": "Code\n# Load packages\nlibrary(tidyverse)\nlibrary(viridisLite)\nlibrary(khroma)\nlibrary(sf)\nlibrary(mapview)\nlibrary(DT)\nlibrary(here)\nlibrary(conflicted)\n\n# Declare package conflict preferences\nconflicts_prefer(dplyr::filter())"
+    "text": "Code\n# Load packages\nlibrary(tidyverse)\nlibrary(viridisLite)\nlibrary(sf)\nlibrary(mapview)\nlibrary(DT)\nlibrary(here)\nlibrary(conflicted)\n\n# Declare package conflict preferences\nconflicts_prefer(dplyr::filter())"
   },
   {
     "objectID": "code/analysis/cont_wq_analysis_plan.html#map",
@@ -68,5 +68,75 @@
     "title": "Continuous Water Quality Station Maps",
     "section": "",
     "text": "Code\n# Load packages\nlibrary(tidyverse)\nlibrary(viridisLite)\nlibrary(sf)\nlibrary(mapview)\nlibrary(htmltools)\nlibrary(DT)\nlibrary(here)\nlibrary(conflicted)\n\n# Declare package conflict preferences\nconflicts_prefer(dplyr::filter())\n\n# Prevent mapview from dynamically switching to dark maps based on point color contrast\nmapviewOptions(basemaps.color.shuffle = FALSE)\n\n\n\nImport and Prepare Data\n\n\nCode\n# Import continuous WQ station coordinates\nsf_stations &lt;- read_sf(\n  here(\"data/processed/spatial/first_flush_spatial_data.gpkg\"),\n  layer = \"cont_wq_stations\"\n)\n\n# Import continuous WQ station metadata\ndf_metadata &lt;- readRDS(here(\"data/processed/wq/cont_wq_metadata.rds\"))\n\n# Add metadata to station coordinates\nsf_stations_c1 &lt;- sf_stations %&gt;%\n  left_join(df_metadata, by = join_by(Survey, Data_Source, Station_ID)) %&gt;%\n  relocate(Station_Name, .after = Station_ID) %&gt;%\n  mutate(\n    across(where(is.Date), \\(x) format(x, \"%Y-%m-%d\")),\n    Survey = factor(Survey)\n  )\n\n# Import Strata polygons\nsf_strata &lt;-\n  read_sf(\n    here(\"data/processed/spatial/first_flush_spatial_data.gpkg\"),\n    layer = \"design_strata\"\n  ) |&gt;\n  filter(!Stratum %in% c(\"Out of Bounds\", \"Central SF Bay\", \"South SF Bay\"))\n\n# Create color palettes for station points (using Survey) and region polygons\nsurvey_names &lt;- levels(sf_stations_c1$Survey)\npal_stations &lt;-\n  plasma(n = length(survey_names)) |&gt;\n  setNames(survey_names)\n\n\n\n\nInteractive Maps\n\n\nCode\nndf_maps &lt;- sf_stations_c1 %&gt;%\n  nest(sf_data = everything(), .by = Parameter) %&gt;%\n  mutate(sf_data = map(sf_data, \\(x) mutate(x, Survey = fct_drop(Survey)))) |&gt;\n  arrange(Parameter) %&gt;%\n  mutate(\n    maps = map(\n      sf_data,\n      \\(sf_obj) {\n        local_levels &lt;- levels(sf_obj$Survey)\n        local_colors &lt;- pal_stations[local_levels]\n\n        mapview(\n          sf_obj,\n          zcol = \"Survey\",\n          col.regions = unname(local_colors),\n          label = \"Station_Name\",\n          layer.name = \"Survey\",\n          cex = 5\n        ) +\n          mapview(\n            sf_strata,\n            label = \"Stratum\",\n            layer.name = \"Strata\",\n            alpha.regions = 0.4,\n            legend = FALSE\n          )\n      }\n    )\n  )\n\n\n\nChlorophyllDischargeDissolved OxygenMean Water VelocitySpecific ConductanceSuspended Sediment ConcTidally-filtered DischargeTurbidityWater TemperaturepH\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nStation Metadata\n\n\nCode\nsf_stations_c1 %&gt;%\n  st_drop_geometry() %&gt;%\n  select(-Station_ID) %&gt;%\n  mutate(\n    across(c(Start, End), ymd),\n    across(c(Survey, Data_Source, Stratum, Parameter, Interval), factor)\n  ) %&gt;%\n  datatable(filter = \"top\")"
+  },
+  {
+    "objectID": "code/analysis/cont_wq_analysis_plan.html#sacramento-river-mainstem",
+    "href": "code/analysis/cont_wq_analysis_plan.html#sacramento-river-mainstem",
+    "title": "First Flush - Water Quality Analysis Plan",
+    "section": "Sacramento River Mainstem",
+    "text": "Sacramento River Mainstem\n\nUSGS Sacramento River at Freeport (11447650)\nDWR-CEMP Sacramento River at Hood (SRH)\nUSGS Sacramento River below Georgiana Slough (11447905)\nDWR-NCRO (WQES) Miner Slough near Sacramento River (B9147000) - water quality\nDWR-NCRO (Flow) Miner Slough near Sacramento River (B91470Q) - discharge and velocity\nDWR-NCRO (WQES) Steamboat Slough near Sacramento River (B9145000) - water quality\nDWR-NCRO (Flow) Steamboat Slough near Sacramento River (B91450Q) - discharge and velocity"
+  },
+  {
+    "objectID": "code/analysis/cont_wq_analysis_plan.html#sacramento-river-dwsc",
+    "href": "code/analysis/cont_wq_analysis_plan.html#sacramento-river-dwsc",
+    "title": "First Flush - Water Quality Analysis Plan",
+    "section": "Sacramento River DWSC",
+    "text": "Sacramento River DWSC\n\nUSGS Sacramento River Deep Water Ship Channel near Rio Vista (11455335) - only from 2008-2021\nUSGS Sacramento River Deep Water Ship Channel near Courtland (11455142)\nUSGS RYI and RYF combined\n\nUSGS Cache Slough at Ryer Island (11455350) - from 2003 to 9/5/2018\nUSGS Cache Slough above Ryer Island Ferry near Rio Vista CA (11455385) - from 9/6/2018 to 2025"
+  },
+  {
+    "objectID": "code/analysis/cont_wq_analysis_plan.html#cache-slough-and-liberty-island",
+    "href": "code/analysis/cont_wq_analysis_plan.html#cache-slough-and-liberty-island",
+    "title": "First Flush - Water Quality Analysis Plan",
+    "section": "Cache Slough and Liberty Island",
+    "text": "Cache Slough and Liberty Island\n\nUSGS Cache Slough near Hastings Tract near Rio Vista CA (11455280)\nUSGS Cache Slough at South Liberty Island near Rio Vista CA (11455315)"
+  },
+  {
+    "objectID": "code/analysis/cont_wq_analysis_plan.html#north-and-south-forks-mokelumne-river",
+    "href": "code/analysis/cont_wq_analysis_plan.html#north-and-south-forks-mokelumne-river",
+    "title": "First Flush - Water Quality Analysis Plan",
+    "section": "North and South Forks Mokelumne River",
+    "text": "North and South Forks Mokelumne River\n\nDWR-NCRO (WQES) Mokelumne River Near Hwy 12 (MOK) - water quality\nUSGS Mokelumne River at Andrus Island near Terminous CA (11336930) - discharge and velocity\nUSGS Little Potato Slough at Terminous CA (11336790)\nUSGS North Mokelumne near Walnut Grove CA (11336685)\nUSGS South Mokelumne River at New Hope Bridge near Walnut Grove CA (11336680)"
+  },
+  {
+    "objectID": "code/analysis/cont_wq_analysis_plan.html#south-delta",
+    "href": "code/analysis/cont_wq_analysis_plan.html#south-delta",
+    "title": "First Flush - Water Quality Analysis Plan",
+    "section": "South Delta",
+    "text": "South Delta\n\nDWR-CEMP San Joaquin River at Prisoners Point (PPT) - water quality\nUSGS San Joaquin River at Prisoners Point near Terminous (11313460) - discharge and velocity\nDWR-NCRO (WQES) Old River at Quimby Island (ORQ) - water quality\nUSGS Old River at Quimby Island near Bethel Island (11313434) - discharge and velocity\nDWR-NCRO (WQES) Middle River near Holt (HLT) - water quality\nUSGS Middle River near Holt (11312685) - discharge and velocity\nDWR-NCRO (WQES) Old River near Bacon Island at USGS Pile (OBI) - water quality\nUSGS Old River at Bacon Island (11313405) - discharge and velocity\nUSGS Middle River at Middle River (11312676)\nUSGS Old River near Byron (11313315)\nDWR-NCRO (WQES) Victoria Canal near Byron (VCU) - water quality\nUSGS Victoria Canal near Byron (11312672) - discharge and velocity\nDWR-NCRO (WQES) Old River at Tracy Wildlife Association (TWA) - water quality\nDWR-NCRO (Flow) Old River near Tracy Blvd Bridge (B95380Q) - discharge and velocity\nDWR-CEMP San Joaquin River at Mossdale Bridge (MSD) - water quality\nDWR-NCRO (Flow) San Joaquin River at Mossdale (B95820Q) - discharge and velocity\nUSGS San Joaquin River below Garwood Bridge at Stockton (11304810)"
+  },
+  {
+    "objectID": "code/analysis/cont_wq_analysis_plan.html#confluence",
+    "href": "code/analysis/cont_wq_analysis_plan.html#confluence",
+    "title": "First Flush - Water Quality Analysis Plan",
+    "section": "Confluence",
+    "text": "Confluence\n\nDWR-CEMP Sacramento River at Rio Vista Bridge (RVB) - water quality\nUSGS Sacramento River at Rio Vista (11455420) - discharge and velocity\nUSGS San Joaquin River at Jersey Point (11337190)\nDWR-CEMP San Joaquin River at Antioch Ship Canal (ANH)\nDWR-CEMP Sacramento River at Chipps Island (MAL)"
+  },
+  {
+    "objectID": "code/analysis/cont_wq_analysis_plan.html#suisun-marsh-and-montezuma-slough",
+    "href": "code/analysis/cont_wq_analysis_plan.html#suisun-marsh-and-montezuma-slough",
+    "title": "First Flush - Water Quality Analysis Plan",
+    "section": "Suisun Marsh and Montezuma Slough",
+    "text": "Suisun Marsh and Montezuma Slough\n\nUSGS First Mallard Branch near Fairfield CA (381142122015801)\nDWR-WQA Montezuma Slough at National Steel (S-64) - water quality\nDWR-NCRO (Flow) Montezuma Slough at National Steel (E33670Q) - discharge and velocity\nDWR-WQA Montezuma Slough near Beldons Landing (S-49)\nDWR-WQA Suisun Slough at Godfather (S-37)"
+  },
+  {
+    "objectID": "code/analysis/cont_wq_analysis_plan.html#suisun-and-honker-bays",
+    "href": "code/analysis/cont_wq_analysis_plan.html#suisun-and-honker-bays",
+    "title": "First Flush - Water Quality Analysis Plan",
+    "section": "Suisun and Honker Bays",
+    "text": "Suisun and Honker Bays\n\nDWR-CEMP Honker Bay near Wheeler Point (HON)\nDWR-CEMP Suisun Bay off Middle Point near Nichols (RYC)\nDWR-CEMP Grizzly Bay at Dolphin near Suisun Slough (GZL)"
+  },
+  {
+    "objectID": "code/analysis/cont_wq_analysis_plan.html#san-pablo-bay-and-carquinez-strait",
+    "href": "code/analysis/cont_wq_analysis_plan.html#san-pablo-bay-and-carquinez-strait",
+    "title": "First Flush - Water Quality Analysis Plan",
+    "section": "San Pablo Bay and Carquinez Strait",
+    "text": "San Pablo Bay and Carquinez Strait\n\nDWR-CEMP Suisun Bay at Martinez (MRZ)\nUSGS Suisun Bay at Benicia Bridge near Benicia CA (11455780)\nUSGS Carquinez Strait at Carquinez Bridge near Crockett CA (11455820)"
+  },
+  {
+    "objectID": "code/analysis/cont_wq_analysis_plan.html#out-of-bounds",
+    "href": "code/analysis/cont_wq_analysis_plan.html#out-of-bounds",
+    "title": "First Flush - Water Quality Analysis Plan",
+    "section": "Out of bounds",
+    "text": "Out of bounds\n\nDWR-CEMP San Joaquin River McCune Station near Vernalis (SJR) - water quality\nUSGS San Joaquin River near Vernalis (11303500) - discharge, water temperature (1972-1998), and SSC\nDWR-O&M Clifton Court Forebay (CLC)?\n\nDaily Water Temperature: 1988-current\nDaily Specific Conductance: 1987-current\nDaily Turbidity (NTU): 1988-current\nDaily Chlorophyll Fluorescence: 1988-current"
   }
 ]
