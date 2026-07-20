@@ -196,6 +196,348 @@ stations:
       discharge_tf: "72137"
     data_freq: daily
 
+  - station_abbr: CAH
+    station_name: Cache Slough near Hastings Tract near Rio Vista CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11455280
+    parameters:
+      <<: *core_usgs
+    data_freq: 15-min
+
+  - station_abbr: LIB
+    station_name: Cache Slough at South Liberty Island near Rio Vista CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11455315
+    parameters:
+      <<: *core_usgs
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: MOK
+    station_name: Mokelumne River Near Hwy 12
+    survey: DWR-NCRO (WQ)
+    data_api: EDI
+    api_data_id: edi.2385.1
+    api_station_id: MOK
+    data_freq: 15-min
+
+  - station_abbr: MOK
+    station_name: Mokelumne River at Andrus Island near Terminous CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11336930
+    parameters:
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: MOK
+    station_name: Mokelumne River at Andrus Island near Terminous CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11336930
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: LPS
+    station_name: Little Potato Slough at Terminous CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11336790
+    parameters:
+      <<: *core_usgs
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: LPS
+    station_name: Little Potato Slough at Terminous CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11336790
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: NMR
+    station_name: North Mokelumne near Walnut Grove CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11336685
+    parameters:
+      <<: *core_usgs
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: NMR
+    station_name: North Mokelumne near Walnut Grove CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11336685
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: SMR
+    station_name: South Mokelumne River at New Hope Bridge near Walnut Grove CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11336680
+    parameters:
+      <<: *core_usgs
+      discharge_tf: "72137"
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: PPT
+    station_name: San Joaquin River at Prisoners Point
+    survey: DWR-CEMP
+    data_api: EDI
+    api_data_id: edi.1177.8
+    api_station_id: PPT
+    data_freq: 15-min
+
+  - station_abbr: PPT
+    station_name: San Joaquin River at Prisoners Point near Terminous
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11313460
+    parameters:
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: PPT
+    station_name: San Joaquin River at Prisoners Point near Terminous
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11313460
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: ORQ
+    station_name: Old River at Quimby Island
+    survey: DWR-NCRO (WQ)
+    data_api: EDI
+    api_data_id: edi.2385.1
+    api_station_id: ORQ
+    data_freq: 15-min
+
+  - station_abbr: ORQ
+    station_name: Old River at Quimby Island near Bethel Island
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11313434
+    parameters:
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: ORQ
+    station_name: Old River at Quimby Island near Bethel Island
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11313434
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: HLT
+    station_name: Middle River near Holt
+    survey: DWR-NCRO (WQ)
+    data_api: EDI
+    api_data_id: edi.2385.1
+    api_station_id: HLT
+    data_freq: 15-min
+
+  - station_abbr: HLT
+    station_name: Middle River near Holt
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11312685
+    parameters:
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: HLT
+    station_name: Middle River near Holt
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11312685
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: OBI
+    station_name: Old River near Bacon Island at USGS Pile
+    survey: DWR-NCRO (WQ)
+    data_api: EDI
+    api_data_id: edi.2385.1
+    api_station_id: OBI
+    data_freq: 15-min
+
+  - station_abbr: OBI
+    station_name: Old River at Bacon Island
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11313405
+    parameters:
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: OBI
+    station_name: Old River at Bacon Island
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11313405
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: MDM
+    station_name: Middle River at Middle River
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11312676
+    parameters:
+      <<: *core_usgs
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: MDM
+    station_name: Middle River at Middle River
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11312676
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: ORB
+    station_name: Old River near Byron
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11313315
+    parameters:
+      <<: *core_usgs
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: ORB
+    station_name: Old River near Byron
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11313315
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: VCU
+    station_name: Victoria Canal near Byron
+    survey: DWR-NCRO (WQ)
+    data_api: EDI
+    api_data_id: edi.2180.2
+    api_station_id: VCU
+    data_freq: 15-min
+
+  - station_abbr: VCU
+    station_name: Victoria Canal near Byron
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11312672
+    parameters:
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: VCU
+    station_name: Victoria Canal near Byron
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11312672
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: TWA
+    station_name: Old River at Tracy Wildlife Association
+    survey: DWR-NCRO (WQ)
+    data_api: EDI
+    api_data_id: edi.2180.2
+    api_station_id: TWA
+    data_freq: 15-min
+
+  - station_abbr: TWA
+    station_name: Old River near Tracy Blvd Bridge
+    survey: DWR-NCRO (Tide)
+    data_api: CNRA
+    data_api_type: continuous
+    api_station_id: B95380Q
+    parameters:
+      <<: *core_ncro_tide
+    data_freq: 15-min
+
+  - station_abbr: MSD
+    station_name: San Joaquin River at Mossdale Bridge
+    survey: DWR-CEMP
+    data_api: EDI
+    api_data_id: edi.1177.8
+    api_station_id: MSD
+    data_freq: 15-min
+
+  - station_abbr: MSD
+    station_name: San Joaquin River at Mossdale
+    survey: DWR-NCRO (Tide)
+    data_api: CNRA
+    data_api_type: continuous
+    api_station_id: B95820Q
+    parameters:
+      <<: *core_ncro_tide
+    data_freq: 15-min
+
+  - station_abbr: SJG
+    station_name: San Joaquin River below Garwood Bridge at Stockton
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11304810
+    parameters:
+      <<: *core_usgs
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: SJG
+    station_name: San Joaquin River below Garwood Bridge at Stockton
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11304810
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
   - station_abbr: RVB
     station_name: Sacramento River at Rio Vista Bridge
     survey: DWR-CEMP
@@ -223,6 +565,43 @@ stations:
     parameters:
       discharge_tf: "72137"
     data_freq: daily
+
+  - station_abbr: SJJ
+    station_name: San Joaquin River at Jersey Point
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11337190
+    parameters:
+      <<: *core_usgs
+      velocity: "72255"
+    data_freq: 15-min
+
+  - station_abbr: SJJ
+    station_name: San Joaquin River at Jersey Point
+    survey: USGS
+    data_api: USGS
+    data_api_type: daily
+    api_station_id: USGS-11337190
+    parameters:
+      discharge_tf: "72137"
+    data_freq: daily
+
+  - station_abbr: ANH
+    station_name: San Joaquin River at Antioch Ship Canal
+    survey: DWR-CEMP
+    data_api: EDI
+    api_data_id: edi.1177.8
+    api_station_id: ANH
+    data_freq: 15-min
+
+  - station_abbr: MAL
+    station_name: Sacramento River at Chipps Island
+    survey: DWR-CEMP
+    data_api: EDI
+    api_data_id: edi.1177.8
+    api_station_id: MAL
+    data_freq: 15-min
 
   - station_abbr: FMB
     station_name: First Mallard Branch near Fairfield CA
@@ -271,6 +650,58 @@ stations:
     api_station_id: S-37
     parameters:
       <<: *core_wqa
+    data_freq: 15-min
+
+  - station_abbr: HON
+    station_name: Honker Bay near Wheeler Point
+    survey: DWR-CEMP
+    data_api: EDI
+    api_data_id: edi.1177.8
+    api_station_id: HON
+    data_freq: 15-min
+
+  - station_abbr: RYC
+    station_name: Suisun Bay off Middle Point near Nichols
+    survey: DWR-CEMP
+    data_api: EDI
+    api_data_id: edi.1177.8
+    api_station_id: RYC
+    data_freq: 15-min
+
+  - station_abbr: GZL
+    station_name: Grizzly Bay at Dolphin near Suisun Slough
+    survey: DWR-CEMP
+    data_api: EDI
+    api_data_id: edi.1177.8
+    api_station_id: GZL
+    data_freq: 15-min
+
+  - station_abbr: MRZ
+    station_name: Suisun Bay at Martinez
+    survey: DWR-CEMP
+    data_api: EDI
+    api_data_id: edi.1177.8
+    api_station_id: MRZ
+    data_freq: 15-min
+
+  - station_abbr: SBR
+    station_name: Suisun Bay at Benicia Bridge near Benicia CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11455780
+    parameters:
+      <<: *core_usgs
+    data_freq: 15-min
+
+  - station_abbr: CRQ
+    station_name: Carquinez Strait at Carquinez Bridge near Crockett CA
+    survey: USGS
+    data_api: USGS
+    data_api_type: continuous
+    api_station_id: USGS-11455820
+    parameters:
+      <<: *core_usgs
     data_freq: 15-min
 
   - station_abbr: SJR

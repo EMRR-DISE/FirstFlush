@@ -156,6 +156,41 @@ clean_edi_dwr_cemp <- function(df_raw, end_date) {
   return(df_clean)
 }
 
+# Process DWR-NCRO (WQ) continuous (15-min) data from EDI data package for a single target branch
+clean_edi_dwr_ncro_wq <- function(df_raw, end_date) {
+  df_clean <- df_raw |>
+    # Create datetime column from date and time and make sure that all timestamps fall on an exact
+    # 15-minute interval
+    dplyr::mutate(
+      datetime = lubridate::round_date(
+        lubridate::mdy_hms(Date_Time,tz = "Etc/GMT+8"),
+        unit = "15 minute"
+      )
+    ) |>
+    dplyr::select(
+      survey,
+      station_abbr,
+      data_freq,
+      datetime,
+      water_temp = Water_Temperature,
+      sp_cond = Specific_Conductance,
+      turbidity = Turbidity
+    ) |>
+    dplyr::filter(lubridate::date(datetime) <= end_date) |>
+    # Remove any overlapping timestamps
+    dplyr::distinct(datetime, .keep_all = TRUE) |>
+    # Fill in any missing timestamps
+    fill_missing_datetime() |>
+    tidyr::fill(survey, station_abbr, data_freq) |>
+    tidyr::pivot_longer(
+      cols = tidyselect::where(is.numeric),
+      names_to = "parameter",
+      values_to = "value"
+    )
+
+  return(df_clean)
+}
+
 # Process DWR-NCRO (WQ) or (Tide) continuous (15-min) data from CNRA data portal for a single
 # target branch. This is a general function to be used in both wq and tide variations of this
 # cleaning function, because the processing steps are identical.
