@@ -1,0 +1,240 @@
+---
+title: "beach seine station selection: quantitative criteria"
+author: "Pete Nelson"
+editor: visual
+---
+
+# purpose
+
+Originally (`site selection.qmd`) I selected stations by eye from monthly coverage heat maps. This document replaces that visual judgment with a more objective and easily reproducible approach, applied uniformly to every station in `dt3.rds`. It would up reproducing `site selection.qmd`'s `sites` list almost exactly (see `# compare to prior manual selection` below) and documents the two cases where I've chosen to retain a station manually.
+
+## the rule
+
+Station inclusion is decided separately for each of the two time series, because they have different target months and different study windows:
+
+- **Series A** (long time series): Jan/Feb/Mar coverage, 1977-2025; maintains data from key outmigration months while maximizing the length of the time series. Prior to 1994, beach seines during remaining months of the year were conducted so sporadically as to be of lesser value.
+- **Series B** (short, year-round-ish series): Nov-Jun coverage, 1994-2025. Includes beach seine data from the duration of the outmigration period at the cost of a shorter time series.
+
+For each series, a station passes if **both** of the following hold:
+
+1.  **Minimum-history.** The station must have been *eligible* to be sampled for at least 15 years of the series' study window, from 1977 to 2025 (i.e. `study_end - max(first_year, study_start) + 1 >= 15`). This establishes the denominator for a minimum monthly coverage described below. Limiting stations to those with a relatively lengthy number of years of *potential* coverage ensures that we have a decent time series and excludes any station with only a few years of history (say 1 or 2) but perfect monthly coverage—this would offer a superficially high percentage but uncertain biological or statistical relevance (e.g. new 2024/2025 stations showing "\>50%" from a single complete year).
+2.  **Coverage threshold.** Of the years in the study window the station was eligible to cover, at least 50% must have *all* target months sampled (all 3 of Jan/Feb/Mar for Series A; all 8 of Nov-Jun for Series B). This allows for imperfect monthly coverage while maintaining a minimum albeit arbitrary standard.
+
+Everything above is coverage-based only. It does **not** encode any geographic/hydrological judgment. Whether SF Bay or San Joaquin River stations belong in the *primary* long time series versus a supplementary one is a separate scientific decision (see `# geographic scope`, below), kept deliberately out of the coverage rule.
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+library(janitor)
+library(here)
+library(tidyverse)
+
+THRESHOLD  <- 50   # % of the study window with complete target-month coverage
+MIN_YEARS  <- 15   # minimum eligible years before the percentage is trusted
+
+series_def <- list(
+  A = list(months = 1:3, start = 1977, end = 2025, label = "jfm"),
+  B = list(months = c(11, 12, 1:6), start = 1994, end = 2025, label = "novjun")
+)
+
+# stations retained despite sitting at/near the threshold -- see
+# "judgment calls" section below for the reasoning
+manual_keep <- c("SR094E", "XC001N")
+
+```
+
+## tidy the raw data and build a sampling-coverage table
+
+```{r}
+#| label: coverage-table
+#| message: false
+#| warning: false
+
+raw <- read_rds(here("salmon/data/raw/dt3.rds")) %>%
+  clean_names() %>%
+  mutate(
+    region = as.character(region_code),
+    station = as.character(station_code),
+    date = mdy(sample_date),
+    .keep = "unused"
+  )
+
+# distinct station/year/month/region combos actually sampled; does NOT 
+# include station-months when sampling failed to occur
+coverage <- raw %>%
+  distinct(station, region, year = year(date), month = month(date)) %>%
+  mutate(sampled = 1)
+
+```
+
+## the coverage-metric function
+
+```{r}
+#| label: coverage-metric-fn
+
+# for a given target-month set and study window, compute, per station:
+#  - n_complete: number of years within the window where every target month
+#    was sampled
+#  - denom: number of years of the window the station was eligible to cover
+#    (from its own first year, or the window start, through the window end)
+#  - pct_coverage: n_complete / denom, as a percent
+#  - eligible: whether denom clears the minimum-history floor
+station_coverage_metric <- function(coverage, months, start, end,
+                                     min_years = MIN_YEARS) {
+  n_needed <- length(months)
+
+  n_complete <- coverage %>%
+    filter(month %in% months, between(year, start, end)) %>%
+    count(station, year, name = "n_months") %>%
+    filter(n_months == n_needed) %>%
+    count(station, name = "n_complete")
+
+  first_last <- coverage %>%
+    group_by(station) %>%
+    summarise(first_year = min(year), last_year = max(year), .groups = "drop")
+
+  first_last %>%
+    left_join(n_complete, by = "station") %>%
+    mutate(
+      n_complete   = replace_na(n_complete, 0),
+      denom = pmax(end - pmax(first_year, start) + 1, 0),
+      pct_coverage = if_else(denom > 0, round(100 * n_complete / denom, 1), NA_real_),
+      eligible = denom >= min_years
+    )
+}
+
+```
+
+## apply the rule to both series
+
+```{r}
+#| label: apply-rule
+#| message: false
+
+metrics_A <- station_coverage_metric(coverage, series_def$A$months,
+                                      series_def$A$start, series_def$A$end) %>%
+  rename_with(~ paste0(., "_A"), c(n_complete, denom, pct_coverage, eligible))
+
+metrics_B <- station_coverage_metric(coverage, series_def$B$months,
+                                      series_def$B$start, series_def$B$end) %>%
+  rename_with(~ paste0(., "_B"), c(n_complete, denom, pct_coverage, eligible))
+
+sta_region <- coverage %>% distinct(station, region)
+
+station_selection <- sta_region %>%
+  left_join(metrics_A %>% select(station, first_year, last_year, ends_with("_A")),
+            by = "station") %>%
+  left_join(metrics_B %>% select(station, ends_with("_B")), by = "station") %>%
+  mutate(
+    pass_A = eligible_A & pct_coverage_A >= THRESHOLD,
+    pass_B = eligible_B & pct_coverage_B >= THRESHOLD,
+    override_A = station %in% manual_keep & !pass_A,
+    override_B = station %in% manual_keep & !pass_B,
+    selected_A = pass_A | station %in% manual_keep,
+    selected_B = pass_B | station %in% manual_keep
+  )
+
+write_rds(station_selection, here("salmon/data/processed/station_selection.rds"))
+write_csv(station_selection, here("salmon/data/processed/station_selection.csv"))
+
+sites_A <- station_selection %>% filter(selected_A) %>% arrange(region, station)
+sites_B <- station_selection %>% filter(selected_B) %>% arrange(region, station)
+
+nrow(sites_A); nrow(sites_B)
+```
+
+## judgment calls
+
+There are some sites that barely meet the minimum standards described above: `SR094E` (Lower Sacramento River, 51.1% of Series A) and `XC001N` (Central Delta, 51.0% of Series A) both clear the 50% threshold as specified -- narrowly. They don't actually need the `manual_keep` override to pass. I'm listing them explicitly anyway (rather than leaving their inclusion as an unremarked side effect of picking 50% instead of, say, 52%) so that if the threshold is revisited later, these two don't silently drop out without a documented decision. If we'd rather they be unconditionally retained regardless of the exact threshold chosen, `manual_keep` already does that.
+
+Other sites fail to meet those standards but may be worth considering: from the Lower Sac/North Delta: `SR012W` starts in 2007 so it can't extend the series back; beginning in 1976, `SR012E` was strong but stopped in 2007, `SR144W` stopped in 2019, and `SS011N` just sits weaker on coverage (\~53%).
+
+South Delta is a special problem. This region only had 2 manually-selected stations to begin with, the sparsest of my four core regions. Three rejected South Delta stations have decent coverage, but late starts relative to the 1977 target: `SJ051E` (87.5%, starts 1994), `SJ032S` (66.7%, starts 1993), and `SJ026S` (62.5%, starts 2002, the shortest record of the three). None of them can anchor the series back to the late '70s the way `MR010W`/`SJ041N` (both starting 1979) can. It may be worth considering over-riding my standards and including one, two or all three of these S Delta stations—`SJ051E` especially—to improve our ability to evaluate migration timing in the South Delta region.
+
+## geographic scope (separate from the coverage rule)
+
+`site selection.qmd`'s conservative `sites` list included only Lower Sacramento River, North Delta, Central Delta, and South Delta stations -- excluding Bay, San Joaquin River, and Sacramento River stations even though several of them (`SJ056E`, `SP001W`, `SA010W`, etc.) clear the coverage threshold above. That's a geographic/hydrological scoping decision, not a coverage gap, so it isn't baked into `station_coverage_metric()`. To reproduce that same core-Delta scope on top of the coverage rule:
+
+```{r}
+#| label: core-delta-scope
+
+core_delta_regions <- c("1", "2", "3", "4")  # Lower Sac, N Delta, Cen Delta, S Delta
+
+sites_A_core <- sites_A %>% filter(region %in% core_delta_regions)
+nrow(sites_A_core)
+```
+
+## compare to prior manual selection
+
+```{r}
+#| label: compare-to-manual
+
+n_delta   <- c("AM001S", "MS001N", "SR014W", "SR017E", "SR024E", "SR043W", "SR049E", "SR060E")
+cen_delta <- c("DS002S", "GS010E", "LP003E", "MK004W", "SF014E", "SJ001S", "SJ005N", "TM001N", "XC001N")
+s_delta   <- c("MR010W", "SJ041N")
+l_sac     <- c("SR071E", "SR080E", "SR090W", "SR094E", "SR138E")
+# manually-selected sites (based on visual eval of heatmaps)
+manual_sites <- c(cen_delta, l_sac, n_delta, s_delta)
+
+setdiff(manual_sites, sites_A_core$station)  # manual stations the rule would drop -> expect none
+setdiff(sites_A_core$station, manual_sites)  # rule-passing stations not in the manual list
+```
+
+Decision: adopt the full `sites_A_core` output — all 31 stations — as the official Series A list, rather than treating it as 24 manual + isolated overrides. That folds in all seven "new" sites: the two borderline cases from before (`SR094E`, `XC001N`) plus the four Lower Sac/North Delta stations with late starts or dropouts (`SR012W`, `SR012E`, `SR144W`, `SS011N`) and the three South Delta additions (`SJ051E`, `SJ032S`, `SJ026S`).
+
+```{r}
+#| label: seriesA-final
+
+
+## final station list
+
+# Per PI review, all stations passing the coverage rule for the core Delta
+# regions are retained -- not just the manual 24 plus isolated overrides.
+# The official Series A (long time series) station list is the full
+# sites_A_core output of the coverage rule.
+
+sites_A_final <- sites_A_core
+
+write_rds(sites_A_final, here("salmon/data/processed/sites_A_final.rds"))
+write_csv(sites_A_final, here("salmon/data/processed/sites_A_final.csv"))
+
+nrow(sites_A_final)  # expect 31
+```
+
+Let's review the sites for Series B now too. Series B doesn't have a manually-selected list to compare against directly the same way Series A had your `sites`/`new_sites`, but it's worth two checks: seeing the current 34 sites broken out by region, and comparing these against your `new_sites` list (the extended, post-1998 list from the original qmd), which was already conceptually the "Series B equivalent" — permissive on region, shorter timeframe.
+
+```{r}
+#| label: seriesB-final
+
+# first, check regional break-down
+station_selection %>%
+  filter(pass_B) %>%
+  select(station, region, first_year, last_year, n_complete_B, denom_B, pct_coverage_B) %>%
+  arrange(region, desc(pct_coverage_B))
+
+# compare to my original new_sites list
+new_sites <- c(
+  "AM001S","MS001N","SR014W","SR017E","SR024E","SR043W","SR049E","SR060E","SS011N",
+  "DS002S","GS010E","LP003E","MK004W","SF014E","SJ001S","SJ005N","TM001N","XC001N",
+  "MR010W","SJ041N","SJ032S","SJ051E",
+  "SA001M","SA004W","SA007E","SA008W","SA009E","SA010W","SP000W","SP001W","SP003E",
+  "SJ056E","SJ058W","SJ063W",
+  "SR071E","SR080E","SR090W","SR094E","SR138E"
+)
+
+setdiff(new_sites, sites_B$station)   # your extended-list stations the rule drops
+setdiff(sites_B$station, new_sites)   # rule-passing stations not in your extended list
+# ...so there are some rule-passing stations not in my extended list
+
+# let's look at the actual numbers for all nine before drawing conclusions — 
+# same approach as the Bay/SJ debugging earlier, rather than guessing:
+station_selection %>%
+  filter(station %in% c("SA001M","SA004W","SP000W","SP003E","SJ058W","SJ063W",
+                        "SR138E","SR144W","SR012W")) %>%
+  select(station, region, first_year, last_year, n_complete_B, denom_B,
+         pct_coverage_B, eligible_B, pass_B) %>%
+  arrange(region, desc(pct_coverage_B))
+
+```
