@@ -93,7 +93,7 @@ Let's pull in Rosie's storm data including *first flush* events, both timing and
       arrange(WY) %>% 
       # wyd of first flush events for each wy
       mutate(wyd = get_waterYearDay(Date)) %>% 
-      select(ID, Date, wy = WY, wyd, SAC, YOLO, SJR, OUT, YoloSac) %>% 
+      select(ID, Date, wy = WY, wyd, TotalFlow, SAC, SJR, OUT, YoloSac) %>% 
       clean_names() %>% 
       write_rds(here("salmon/data/processed/storms.rds"))
 
@@ -824,7 +824,7 @@ ff_data <-
          .keep = "unused") %>% 
   filter(!is.na(ff_wyd)) %>% 
   select(-c(id, date)) %>% 
-  relocate(c(region, wyd, ff_wyd), .after = wyt)
+  relocate(c(region, wyd, ff_wyd, total_flow), .after = wyt)
 
 ```
 
@@ -904,7 +904,26 @@ summary(lm_ff_wyt)
 AIC(lm_ff_annual, lm_ff_wyt)
 anova(lm_ff_annual, lm_ff_wyt)
 
+ff_data %>% 
+  filter(percentile == "day_10", 
+         region == "Central Delta") %>% 
+  ggplot(aes(x = wy, y = total_flow)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "Day of First Flush",
+       subtitle = "1978 - 2024",
+       x = "Water Year",
+       y = "Total Flow (cfs)") +
+  theme_bw()
+
+# is there a trend? can't think of a climate- or a management-related reason
+library(Kendall)
+MannKendall(storms$ff_wyd)
+MannKendall(storms$total_flow)
+
 ```
+
+The Mann-Kendall test shows no statistically significant monotonic trend in first flush timing (tau = 0.0958, p = 0.18) or magnitude over time (tau = 0.09, p = 0.17).
 
 The plot suggested that *maybe* these events were happening later over time, but the regression analysis shows that, while there is an effect of water year *type* on the timing of first flush, there's insufficient evidence to suggest that there's been a change over time. The improvement to the model with the addition of `wyt` is modest (p=0.056), but seems real to me.
 
@@ -1332,6 +1351,144 @@ envpred_results %>%
   select(metric, "Lower Sacramento River", "North Delta", "Central Delta", "South Delta")
 
 ```
+
+## winter run
+
+What LAD winter run show up in the beach seine data?
+
+```{r}
+#| label: wr-plots
+
+# what size distribution (under 150mm FL) do we see in winter run?
+raw |> 
+  filter(organism_code == "CHN" & fork_length < 150 & fork_length > 0) |>
+  ggplot(aes(x = fork_length)) +
+  geom_histogram(bins = 30, color = "white", fill = "salmon") +
+  labs(title = "Beach Seine Chinook < 200mm FL",
+       x = "Fork Length (mm)") +
+  theme_bw()
+
+# select winter run (<150mmTL) beach seine counts
+wr <-
+  dat %>% 
+  filter(race_by_length == "Winter" & fork_length < 150 & fork_length > 0) |> 
+  pivot_wider(
+    # relies on 'id_code' to distinguish among sample units, but retains environmental data
+    id_cols = c(id_code:time, water_temp),
+    # columns for all fish spp (only CHN needed for this analysis)
+    names_from = organism_code,
+    # log number of each speciesxfork_length for each seine (id_code)
+    values_from = count,
+    # if no matches, enter '0'
+    values_fill = 0,
+    # sum counts if multiple matches
+    values_fn = sum
+  ) %>% 
+  select(c(id_code:water_temp, winter_run = CHN)) %>% 
+  left_join(sites, by = "station") %>% 
+  rename(location = location.x) %>% 
+  select(-c(location.y, year, month, time, method_code)) %>% 
+  relocate(c(region, region_label, location, station), 
+           .after = id_code) %>% 
+  ungroup()
+
+# daily wr catches aggregated by region
+daily_wr_regional <-
+  wr %>% 
+  group_by(region_label, wy, month = month(date), wyd) %>% 
+  summarise(
+    daily_total = sum(winter_run, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# what months are LAD winter run caught?
+daily_wr_regional |> 
+  ggplot(aes(x = as.factor(month))) +
+  geom_bar() +
+  ylim(0, 390) +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5) +
+  labs(title = "Beach Seine LAD Winter Run Chinook",
+       subtitle = "< 200mm FL",
+       x = "Month") +
+  theme_bw()
+
+```
+
+Develop some winter run accumulation curves.
+
+```{r}
+#| label: wr-accumul
+
+regional_wr_cumul <-
+  daily_wr_regional %>% 
+  # filter(month <= 3) %>% 
+  group_by(wy, region_label) %>% 
+  arrange(region_label, wy, wyd) %>% 
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
+  ) %>% 
+  arrange(region_label, wy, month, wyd) %>% 
+  ungroup()
+
+# insufficient numbers to distinguish among regions; sum across the entire region instead
+delta_wr_cumul <-
+  daily_wr_regional |>
+  group_by(wy, wyd, month) |>
+  # compute new daily_total for the entire Delta (ie across all regions)
+  summarise(daily_total = sum(daily_total), .groups = "drop") |>
+  group_by(wy) |>
+  arrange(wy, wyd) |>
+  mutate(annual_total = sum(daily_total),
+         cumul_total = cumsum(daily_total),
+         cumul_percent = 100 * cumul_total / annual_total) |>
+  ungroup()
+
+# uh oh, numbers are really low even Delta-wide
+daily_wr_regional %>%
+  group_by(wy) %>%
+  summarise(total = sum(daily_total)) %>%
+  arrange(wy) |> 
+  ggplot(aes(x = wy, y = total)) +
+  labs(title = "Beach Seine LAD Winter Run",
+       x = "Water Year",
+       y = "Total Count") +
+  geom_col() +
+  theme_bw()
+
+# accumulation curves
+daily_wr_regional %>% 
+  filter(wy >= 1998) %>% 
+  group_by(wy) %>% 
+  arrange(wy, wyd) %>% 
+  mutate(
+    annual_total = sum(daily_total),
+    cumul_total = cumsum(daily_total),
+    cumul_percent = 100 * cumul_total / annual_total
+  ) %>% 
+  arrange(wy, wyd) %>% 
+  ggplot(aes(x = wyd,
+             y = cumul_percent,
+             # identify unique station*wy combos
+             # group = interaction(station, wy),
+             color = wy)) +         
+  geom_line() +
+  # keep the data but zoom the view
+  coord_cartesian(xlim = c(0, 300)) +
+  geom_hline(yintercept = c(10, 50, 90),
+             linetype = "dashed") +
+  scale_color_viridis_c(option = "mako") +
+  labs(x = "Day of Water Year",
+       y = "Cumulative % of Annual Total",
+       title = "Juvenile LAD WR Chinook Accumulation Curves",
+       subtitle = "Delta-wide; data from 1998-2024",
+       color = "water year") +
+  theme_bw()
+
+```
+
+Clearly, there simply are not enough winter run juveniles to pursue the kinds of analyses completed for all run-types combined.
 
 ## next steps
 
