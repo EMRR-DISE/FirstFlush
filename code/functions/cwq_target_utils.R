@@ -55,74 +55,25 @@ aggregate_to_daily <- function(df_data, data_freq) {
 
 # Finish cleaning water quality data to create final data set of daily average values for analysis
 finish_cwq_data <- function(df_data) {
+  # Define WQ measurements to be used in final cleaning
+  wq_meas <- c(
+    "water_temp",
+    "sp_cond",
+    "turbidity",
+    "ssc",
+    "discharge",
+    "discharge_tf",
+    "velocity_tf"
+  )
+
   df_data |>
     tidyr::pivot_wider(
       id_cols = c(station_abbr, date),
       names_from = parameter,
       values_from = value
     ) |>
-    dplyr::select(
-      station_abbr,
-      date,
-      water_temp,
-      sp_cond,
-      turbidity,
-      ssc,
-      discharge,
-      discharge_tf,
-      velocity_tf
-    ) |>
+    dplyr::select(station_abbr, date, tidyselect::all_of(wq_meas)) |>
+    # Remove rows where all WQ measurements are missing
+    dplyr::filter_out(dplyr::if_all(tidyselect::all_of(wq_meas), is.na)) |>
     dplyr::arrange(station_abbr, date)
-}
-
-# Generate station metadata file from cwq_station_metadata, processed_data, and stations shapefile
-generate_station_metadata <- function(station_metadata, processed_data) {
-  # Import continuous WQ station coordinates for all stations
-  sf_stations <- sf::read_sf(
-    "data/processed/spatial/first_flush_spatial_data.gpkg",
-    layer = "cont_wq_stations"
-  )
-
-  # Extract Latitude and Longitude from geom and convert to sf_stations to a tibble
-  coords <- sf::st_coordinates(sf_stations)
-  df_stations <- sf_stations |>
-    dplyr::mutate(latitude = coords[, "Y"], longitude = coords[, "X"]) |>
-    sf::st_drop_geometry() |>
-    dplyr::rename_with(stringr::str_to_snake)
-
-  # Determine parameters used for each survey and station in processed data
-  df_parameters <-
-    dplyr::bind_rows(processed_data) |>
-    dplyr::distinct(survey, station_abbr, parameter) |>
-    dplyr::mutate(
-      parameters = paste0(parameter, collapse = ", "),
-      .by = c(survey, station_abbr)
-    ) |>
-    dplyr::distinct(survey, station_abbr, parameters)
-
-  # Join station_metadata to df_stations only keeping stations used in targets workflow
-  station_metadata |>
-    dplyr::distinct(survey, station_abbr, station_name, api_station_id) |>
-    # Add in parameters used
-    dplyr::left_join(
-      df_parameters,
-      by = dplyr::join_by(survey, station_abbr)
-    ) |>
-    dplyr::left_join(
-      df_stations,
-      by = dplyr::join_by(survey, api_station_id == station_id)
-    ) |>
-    tidyr::replace_na(list(stratum = "Out of Bounds")) |>
-    dplyr::select(
-      survey,
-      station_abbr,
-      station_name,
-      stratum,
-      parameters,
-      data_source,
-      api_station_id,
-      latitude,
-      longitude
-    ) |>
-    dplyr::arrange(station_abbr, survey)
 }

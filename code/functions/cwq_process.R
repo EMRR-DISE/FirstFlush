@@ -4,7 +4,16 @@
 # Contact: David.Bosworth@water.ca.gov
 
 # Main process data function that handles the various specific processing functions
-process_data <- function(df_raw, data_api, data_api_type, survey, end_date) {
+process_data <- function(
+  df_raw,
+  data_api,
+  data_api_type,
+  survey,
+  station_abbr,
+  parameter_name,
+  data_freq,
+  end_date
+) {
   # If a download failed or returned an empty tibble, skip processing
   if (nrow(df_raw) == 0) {
     return(tibble::tibble())
@@ -28,28 +37,52 @@ process_data <- function(df_raw, data_api, data_api_type, survey, end_date) {
     )
   }
 
-  # Build the custom processing function name dynamically
-  # e.g., "clean_usgs_continuous" or "clean_edi"
-  function_name <- if (!is.na(data_api_type)) {
+  # Build the custom processing function names dynamically
+  # Construct specific function name based on specific station, parameter (if specified), and
+  # data frequency attributes
+  clean_station <- tolower(station_abbr)
+  clean_freq <- stringr::str_remove_all(tolower(data_freq), "-")
+  specific_fn_name <- if (!is.na(parameter_name)) {
+    paste(
+      "clean",
+      clean_station,
+      tolower(parameter_name),
+      clean_freq,
+      sep = "_"
+    )
+  } else {
+    paste("clean", clean_station, clean_freq, sep = "_")
+  }
+
+  # Construct default API function name
+  default_fn_name <- if (!is.na(data_api_type)) {
     paste("clean", tolower(data_api), tolower(data_api_type), sep = "_")
   } else {
     paste("clean", tolower(data_api), sep = "_")
   }
 
-  # Append survey to function name for all inputs except for those from the USGS API
-  function_name <- if (tolower(data_api) == "usgs") {
-    function_name
+  # Append survey to default_fn_name for all inputs except for those from the USGS API
+  default_fn_name <- if (tolower(data_api) == "usgs") {
+    default_fn_name
   } else {
     survey_clean <- tolower(stringr::str_remove_all(survey, "\\s|\\)"))
     survey_clean <- stringr::str_replace_all(survey_clean, "[:punct:]", "_")
-    function_name <- paste(function_name, survey_clean, sep = "_")
+    default_fn_name <- paste(default_fn_name, survey_clean, sep = "_")
   }
 
-  # Check if function exists in the sourced environment, and provide error if not
-  if (!exists(function_name)) {
+  # If a specific function exists, use that one, otherwise fall back to default function
+  if (exists(specific_fn_name)) {
+    cli::cli_alert_info(
+      "Applying custom processing with {.fun {specific_fn_name}}"
+    )
+    function_name <- specific_fn_name
+  } else if (exists(default_fn_name)) {
+    function_name <- default_fn_name
+  } else {
+    # Provide error if neither functions exist in the sourced environment
     cli::cli_abort(c(
-      "x" = "The cleaning function {.fun {function_name}} does not exist",
-      "!" = "This function must be available in the sourced functions within {.val code/functions}"
+      "x" = "Neither {.fun {specific_fn_name}} nor default {.fun {default_fn_name}} exist",
+      "!" = "At least one of these functions must be available in the sourced functions within the {.val code/functions} directory"
     ))
   }
 
@@ -96,6 +129,8 @@ clean_usgs_continuous <- function(df_raw) {
       parameter,
       value
     ) |>
+    # Remove NA values so cleaning up duplicates doesn't result in an NA value being selected
+    tidyr::drop_na(value) |>
     # Fill in any missing timestamps
     fill_missing_datetime() |>
     tidyr::fill(survey, station_abbr, data_freq, parameter)
@@ -113,7 +148,10 @@ clean_usgs_daily <- function(df_raw) {
       date = time,
       parameter,
       value
-    )
+    ) |>
+    # Remove any duplicate values
+    tidyr::drop_na(value) |>
+    dplyr::distinct(date, .keep_all = TRUE)
 
   return(df_clean)
 }
@@ -137,6 +175,12 @@ clean_edi_dwr_cemp <- function(df_raw, end_date) {
       sp_cond = spc,
       turbidity
     ) |>
+    # Remove rows with NA values for all measurements so cleaning up duplicates doesn't result
+    # in NA values being selected
+    dplyr::filter_out(dplyr::if_all(
+      c(water_temp, sp_cond, turbidity),
+      is.na
+    )) |>
     # Fill in any missing timestamps
     fill_missing_datetime() |>
     dplyr::filter(lubridate::date(datetime) <= end_date) |>
@@ -165,6 +209,12 @@ clean_edi_dwr_ncro_wq <- function(df_raw, end_date) {
       turbidity = Turbidity
     ) |>
     # Fill in any missing timestamps
+    # Remove rows with NA values for all measurements so cleaning up duplicates doesn't result
+    # in NA values being selected
+    dplyr::filter_out(dplyr::if_all(
+      c(water_temp, sp_cond, turbidity),
+      is.na
+    )) |>
     fill_missing_datetime() |>
     dplyr::filter(lubridate::date(datetime) <= end_date) |>
     tidyr::fill(survey, station_abbr, data_freq) |>
@@ -192,6 +242,8 @@ clean_cnra_continuous_dwr_ncro_gen <- function(df_raw, end_date) {
       parameter,
       value = tidyselect::any_of(c("Point", "Inst"))
     ) |>
+    # Remove NA values so cleaning up duplicates doesn't result in an NA value being selected
+    tidyr::drop_na(value) |>
     # Fill in any missing timestamps
     fill_missing_datetime() |>
     dplyr::filter(lubridate::date(datetime) <= end_date) |>
@@ -220,6 +272,8 @@ clean_local_wdl_dwr_ncro_gen <- function(df_raw, end_date) {
       parameter,
       value = tidyselect::contains(c("Raw Point Data"))
     ) |>
+    # Remove NA values so cleaning up duplicates doesn't result in an NA value being selected
+    tidyr::drop_na(value) |>
     # Fill in any missing timestamps
     fill_missing_datetime() |>
     dplyr::filter(lubridate::date(datetime) <= end_date) |>
@@ -246,6 +300,8 @@ clean_wqp_dwr_wqa <- function(df_raw) {
       parameter,
       value
     ) |>
+    # Remove NA values so cleaning up duplicates doesn't result in an NA value being selected
+    tidyr::drop_na(value) |>
     # Fill in any missing timestamps
     fill_missing_datetime() |>
     tidyr::fill(survey, station_abbr, data_freq, parameter)

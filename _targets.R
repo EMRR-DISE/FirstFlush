@@ -51,6 +51,9 @@ tar_plan(
       data_api = cwq_station_metadata$data_api,
       data_api_type = cwq_station_metadata$data_api_type,
       survey = cwq_station_metadata$survey,
+      station_abbr = cwq_station_metadata$station_abbr,
+      parameter_name = cwq_station_metadata$parameter_name,
+      data_freq = cwq_station_metadata$data_freq,
       end_date = global_end_date
     ),
     pattern = map(raw_data, cwq_station_metadata),
@@ -83,11 +86,19 @@ tar_plan(
   merged_data = resolve_station_merges(combined_data),
   # Finish cleaning merged data by pivoting wider and final polishing
   final_cwq_data = finish_cwq_data(merged_data),
-  # Generate station metadata file from cwq_station_metadata
-  final_station_metadata = generate_station_metadata(
-    cwq_station_metadata,
-    processed_data
+  # Generate data source metadata file from cwq_station_metadata and processed_data
+  tar_target(
+    data_src_metadata,
+    generate_data_src_metadata(
+      station_metadata = cwq_station_metadata,
+      processed_data = processed_data
+    ),
+    pattern = map(cwq_station_metadata, processed_data)
   ),
+  # Generate station metadata file from cwq_station_metadata and spatial data
+  station_metadata = generate_station_metadata(cwq_station_metadata),
+  # Generate period of record metadata file from final_cwq_data
+  por_metadata = generate_por_metadata(final_cwq_data),
   # Export the final cleaned dataset of daily average water quality values to a qdata file that
   # everyone can read (qdata is a highly compressed format provided by the qs2 package)
   tar_file(
@@ -98,12 +109,35 @@ tar_plan(
       output_path
     }
   ),
+  # Export the data source metadata file to a rds file
+  tar_file(
+    export_data_src_metadata,
+    {
+      output_path <- "data/processed/wq/cwq_data_source_metadata.rds"
+      data_src_metadata |>
+        dplyr::reframe(
+          parameters = paste0(parameters, collapse = ", "),
+          .by = c(survey, station_abbr, station_name, data_source)
+        ) |>
+        saveRDS(output_path)
+      output_path
+    }
+  ),
   # Export the station metadata file to a rds file
   tar_file(
-    export_final_station_metadata,
+    export_station_metadata,
     {
       output_path <- "data/processed/wq/cwq_station_metadata.rds"
-      saveRDS(final_station_metadata, output_path)
+      saveRDS(station_metadata, output_path)
+      output_path
+    }
+  ),
+  # Export the period of record metadata file to a rds file
+  tar_file(
+    export_por_metadata,
+    {
+      output_path <- "data/processed/wq/cwq_por_metadata.rds"
+      saveRDS(por_metadata, output_path)
       output_path
     }
   )
