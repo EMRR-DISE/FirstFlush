@@ -28,7 +28,10 @@ tar_plan(
   tar_group_by(
     cwq_station_metadata,
     cwq_station_metadata_raw,
-    station_abbr, survey, parameter_name, data_freq
+    station_abbr,
+    survey,
+    parameter_name,
+    data_freq
   ),
   # Download data dynamically per station
   tar_target(
@@ -100,8 +103,11 @@ tar_plan(
     ),
     pattern = map(cwq_station_metadata, processed_data)
   ),
-  # Generate station metadata file from cwq_station_metadata_raw and spatial data
-  station_metadata = generate_station_metadata(cwq_station_metadata_raw),
+  # Generate station metadata file from cwq_station_metadata_raw, combined data, and spatial data
+  station_metadata = generate_station_metadata(
+    cwq_station_metadata_raw,
+    combined_data
+  ),
   # Generate period of record metadata file from final_cwq_data
   por_metadata = generate_por_metadata(final_cwq_data),
   # Export the final cleaned dataset of daily average water quality values to a qdata file that

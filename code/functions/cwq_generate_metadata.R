@@ -40,8 +40,8 @@ generate_data_src_metadata <- function(station_metadata, processed_data) {
     dplyr::arrange(station_abbr, survey)
 }
 
-# Generate station metadata file from cwq_station_metadata and stations shapefile
-generate_station_metadata <- function(station_metadata) {
+# Generate station metadata file from cwq_station_metadata, combined data, and stations shapefile
+generate_station_metadata <- function(station_metadata, combined_data) {
   # Import continuous WQ station coordinates for all stations
   sf_stations <- sf::read_sf(
     "data/processed/spatial/first_flush_spatial_data.gpkg",
@@ -55,9 +55,23 @@ generate_station_metadata <- function(station_metadata) {
     sf::st_drop_geometry() |>
     dplyr::rename_with(stringr::str_to_snake)
 
+  # Determine parameters used for each survey and station in combined data
+  df_parameters <- combined_data |>
+    dplyr::distinct(survey, station_abbr, parameter) |>
+    dplyr::mutate(
+      parameters = paste0(parameter, collapse = ", "),
+      .by = c(survey, station_abbr)
+    ) |>
+    dplyr::distinct(survey, station_abbr, parameters)
+
   # Join station_metadata to df_stations only keeping stations used in targets workflow
   station_metadata |>
     dplyr::distinct(survey, station_abbr, station_name, api_station_id) |>
+    # Add in parameters used
+    dplyr::left_join(
+      df_parameters,
+      by = dplyr::join_by(survey, station_abbr)
+    ) |>
     dplyr::left_join(
       df_stations,
       by = dplyr::join_by(survey, api_station_id == station_id)
@@ -68,6 +82,7 @@ generate_station_metadata <- function(station_metadata) {
       station_abbr,
       station_name,
       stratum,
+      parameters,
       latitude,
       longitude
     ) |>
