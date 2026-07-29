@@ -196,7 +196,7 @@ stations:
       discharge_tf: "72137"
     data_freq: daily
 
-  - station_abbr: CAH
+  - station_abbr: UCS
     station_name: Cache Slough near Hastings Tract near Rio Vista CA
     survey: USGS
     data_api: USGS

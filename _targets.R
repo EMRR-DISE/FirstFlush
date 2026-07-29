@@ -4,8 +4,6 @@ library(tarchetypes)
 tar_source("code/functions")
 
 tar_option_set(
-  # Packages required by custom functions
-  # packages = c("yaml", "dplyr", "dataRetrieval"),
   # Default storage format for data frames (highly efficient)
   format = "qs",
   # Let the pipeline keep moving if a single station produces an error
@@ -21,9 +19,16 @@ tar_plan(
   # Track the YAML configuration file that defines all CWQ stations, read it in and convert
   # it into a flat tibble for branching
   tar_file_read(
-    cwq_station_metadata,
+    cwq_station_metadata_raw,
     "data/cwq_stations.yml",
     read_cwq_stations_meta(!!.x)
+  ),
+  # Group metadata by station, parameter, and data frequency (creates one branch per row
+  # in metadata)
+  tar_group_by(
+    cwq_station_metadata,
+    cwq_station_metadata_raw,
+    station_abbr, survey, parameter_name, data_freq
   ),
   # Download data dynamically per station
   tar_target(
@@ -95,8 +100,8 @@ tar_plan(
     ),
     pattern = map(cwq_station_metadata, processed_data)
   ),
-  # Generate station metadata file from cwq_station_metadata and spatial data
-  station_metadata = generate_station_metadata(cwq_station_metadata),
+  # Generate station metadata file from cwq_station_metadata_raw and spatial data
+  station_metadata = generate_station_metadata(cwq_station_metadata_raw),
   # Generate period of record metadata file from final_cwq_data
   por_metadata = generate_por_metadata(final_cwq_data),
   # Export the final cleaned dataset of daily average water quality values to a qdata file that
