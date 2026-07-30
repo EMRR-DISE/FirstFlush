@@ -39,7 +39,7 @@
     "href": "code/analysis/cont_wq_analysis_plan.html",
     "title": "First Flush - Water Quality Analysis Plan",
     "section": "",
-    "text": "Code\n# Load packages\nlibrary(tidyverse)\nlibrary(viridisLite)\nlibrary(sf)\nlibrary(mapview)\nlibrary(DT)\nlibrary(here)\nlibrary(conflicted)\n\n# Declare package conflict preferences\nconflicts_prefer(dplyr::filter())"
+    "text": "Turbidity will increase faster and higher during a first flush event compared to later storm events.\nSalinity will decrease more dramatically during first flush compared with other storms.\nDissolved oxygen will decrease during first flush but recover afterwards.\nChlorophyll will decrease more during first flush and stays low during later storm events.\nDo we need a water temperature hypothesis\nOther parameters we are interested in?"
   },
   {
     "objectID": "code/analysis/cont_wq_analysis_plan.html#map",

@@ -7,14 +7,14 @@ format:
   html:
     toc: true
     toc-expand: true
-    code-fold: true
-    code-tools: true
 execute:
+  echo: false
   message: false
   warning: false
 ---
 
 ```{r}
+#| include: false
 # Load packages
 library(tidyverse)
 library(viridisLite)
@@ -26,6 +26,9 @@ library(conflicted)
 
 # Declare package conflict preferences
 conflicts_prefer(dplyr::filter())
+
+# Load necessary targets
+targets::tar_load(c(station_metadata, por_metadata))
 ```
 
 # WQ Hypotheses
@@ -143,12 +146,8 @@ For now, we'll look at the following parameters:
 # Map
 
 ```{r}
-# Import metadata for continuous WQ stations in consideration
-df_stations <- readRDS(here("data/processed/wq/cwq_station_metadata.rds"))
-
-# Convert metadata to sf object to be used in map
-sf_stations <- df_stations |>
-  dplyr::select(-c(data_source, api_station_id)) |>
+# Convert stations metadata to sf object to be used in map
+sf_stations <- station_metadata |>
   st_as_sf(
     coords = c("longitude", "latitude"),
     crs = 4326
@@ -203,27 +202,23 @@ sf_stations |>
 # Station Metadata
 
 ```{r}
-# Import continuous WQ station metadata
-df_metadata <- readRDS(here("data/processed/wq/cont_wq_metadata.rds")) |>
-  rename_with(str_to_snake)
-
-df_stations |>
-  select(
-    survey,
-    station_abbr,
-    station_name,
-    stratum,
-    data_source,
-    api_station_id
-  ) |>
+# Add strata to period of record metadata and produce interactive DT table
+por_metadata |>
   left_join(
-    df_metadata |> select(-station_name),
-    by = join_by(survey, data_source, api_station_id == station_id)
+    station_metadata |> distinct(station_abbr, stratum),
+    by = join_by(station_abbr)
   ) |>
-  select(-api_station_id) |>
+  mutate(
+    stratum = if_else(
+      station_abbr == "RYI-RYF",
+      "Sacramento River Deep Water Ship Channel",
+      stratum
+    )
+  ) |>
+  relocate(stratum, .after = station_abbr) |>
   mutate(
     across(
-      c(survey, station_abbr, stratum, parameter, interval),
+      c(station_abbr, stratum, parameter),
       factor
     )
   ) |>

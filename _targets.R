@@ -151,6 +151,12 @@ tar_plan(
       saveRDS(por_metadata, output_path)
       output_path
     }
+  ),
+  # Generate continuous WQ analysis plan qmd report
+  tar_quarto(
+    cwq_analysis_plan,
+    path = "code/analysis/cont_wq_analysis_plan.qmd",
+    quiet = FALSE
   )
 )
 
