@@ -25,6 +25,11 @@ clean_usgs_15min_overlaps <- function(df_raw, ts_ids) {
       time_series_id = stringr::str_sub(time_series_id, end = 10),
       .keep = "none"
     ) |>
+    # Remove any overlapping timestamps for same time_series_id to ensure pivot wider doesn't
+    # result in list columns. Remove NA values so cleaning up duplicates doesn't result in an
+    # NA value being selected
+    tidyr::drop_na(value) |>
+    dplyr::distinct(datetime, time_series_id, .keep_all = TRUE) |>
     # Pivot data wider to make time_series_ids as column names
     tidyr::pivot_wider(names_from = time_series_id, values_from = value)
 
