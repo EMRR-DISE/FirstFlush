@@ -1,0 +1,10 @@
+name: shinyapp-1
+title:
+username: jordanbuxton
+account: jordanbuxton
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 17655368
+bundleId: 12344103
+url: https://jordanbuxton.shinyapps.io/shinyapp-1/
+version: 1
