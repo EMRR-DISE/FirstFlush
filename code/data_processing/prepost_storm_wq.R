@@ -177,17 +177,30 @@ storm_wq_prepost_long %>%
 
 ## ---- Calculate change in wq values pre and post storm ---- ####
 prepost_storm_wq <- storm_wq_prepost_long %>%
-  group_by(WY_adj, StormDate, DayofFF, AfterFirstFlush, stratum, StormDOWY_adj, Parameter) %>%
-  spread(key = Period, value = Value) %>%
-  mutate(Change = Post - Pre) %>%
-  spread(key = Parameter, value = Change) %>%
-  ungroup() %>%
-  rename("discharge_tf_\u0394" = "discharge_tf",
-         "sp_cond_\u0394" = "sp_cond",
-         "turbidity_\u0394" = "turbidity",
-         "velocity_tf_\u0394" = "velocity_tf",
-         "water_temp_\u0394" = "water_temp") %>%
-  select(-Pre, -Post, -Sep1, -storm_id)
+  select(
+    WY_adj, StormDate,DayofFF, AfterFirstFlush, stratum,
+    StormDOWY_adj, Parameter, Period, Value
+  ) %>%
+  pivot_wider(
+    names_from = Period,
+    values_from = Value
+  ) %>%
+  mutate(
+    Change = Post - Pre
+  ) %>%
+  select(WY_adj, StormDate, DayofFF, AfterFirstFlush, stratum, StormDOWY_adj, Parameter, Change
+  ) %>%
+  pivot_wider(
+    names_from = Parameter,
+    values_from = Change
+  ) %>%
+  rename(
+    "discharge_tf_Δ" = "discharge_tf",
+    "sp_cond_Δ" = "sp_cond",
+    "turbidity_Δ" = "turbidity",
+    "velocity_tf_Δ" = "velocity_tf",
+    "water_temp_Δ" = "water_temp"
+  )
 
 
 write_csv(prepost_storm_wq, here("data", "processed", "storms", "prepost_storm_wq.csv"))
