@@ -29,6 +29,9 @@ conflicts_prefer(dplyr::filter())
 
 # Load necessary targets
 targets::tar_load(c(station_metadata, por_metadata))
+
+# Source necessary functions
+source("code/functions/cwq_target_utils.R")
 ```
 
 # WQ Hypotheses
@@ -202,26 +205,21 @@ sf_stations |>
 # Station Metadata
 
 ```{r}
+# Prepare station metadata to join to period of record metadata
+station_metadata_c <- station_metadata |>
+  distinct(station_abbr, stratum) |>
+  mutate(
+    station_abbr = convert_fct_station_abbr(
+      replace_values(station_abbr, "RYI" ~ "RYI-RYF")
+    )
+  ) |>
+  drop_na(station_abbr)
+
 # Add strata to period of record metadata and produce interactive DT table
 por_metadata |>
-  left_join(
-    station_metadata |> distinct(station_abbr, stratum),
-    by = join_by(station_abbr)
-  ) |>
-  mutate(
-    stratum = if_else(
-      station_abbr == "RYI-RYF",
-      "Sacramento River Deep Water Ship Channel",
-      stratum
-    )
-  ) |>
+  left_join(station_metadata_c, by = join_by(station_abbr)) |>
   relocate(stratum, .after = station_abbr) |>
-  mutate(
-    across(
-      c(station_abbr, stratum, parameter),
-      factor
-    )
-  ) |>
+  mutate(parameter = factor(parameter)) |>
   datatable(filter = "top")
 ```
 

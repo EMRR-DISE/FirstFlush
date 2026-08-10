@@ -72,11 +72,21 @@ generate_station_metadata <- function(station_metadata, combined_data) {
       df_parameters,
       by = dplyr::join_by(survey, station_abbr)
     ) |>
+    # Add in station information
     dplyr::left_join(
       df_stations,
       by = dplyr::join_by(survey, api_station_id == station_id)
     ) |>
-    tidyr::replace_na(list(stratum = "Out of Bounds")) |>
+    # Define a few stations with missing strata and convert stratum to factor using custom
+    # strata order
+    dplyr::mutate(
+      stratum = dplyr::if_else(
+        station_abbr == "SJR",
+        "San Joaquin River upstream of Delta",
+        stratum
+      ),
+      stratum = convert_fct_stratum(stratum)
+    ) |>
     dplyr::select(
       survey,
       station_abbr,

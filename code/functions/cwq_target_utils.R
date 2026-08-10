@@ -2,6 +2,75 @@
 # Author: Dave Bosworth
 # Contact: David.Bosworth@water.ca.gov
 
+# Convert station abbreviations to factor using custom station order
+convert_fct_station_abbr <- function(vec) {
+  # Define custom station order
+  station_order <- c(
+    "FPT",
+    "SRH",
+    "GES",
+    "MIR",
+    "SXS",
+    "C62",
+    "DWS",
+    "RYI-RYF",
+    "UCS",
+    "LIB",
+    "NMR",
+    "SMR",
+    "LPS",
+    "MOK",
+    "SJR",
+    "MSD",
+    "TWA",
+    "VCU",
+    "ORB",
+    "MDM",
+    "OBI",
+    "HLT",
+    "ORQ",
+    "SJG",
+    "PPT",
+    "RVB",
+    "SJJ",
+    "ANH",
+    "MAL",
+    "HON",
+    "RYC",
+    "GZL",
+    "NSL",
+    "BDL",
+    "FMB",
+    "GOD",
+    "SBR",
+    "MRZ",
+    "CRQ"
+  )
+
+  # Convert vector to factor
+  factor(vec, levels = station_order)
+}
+
+# Convert stratum to factor using custom strata order
+convert_fct_stratum <- function(vec) {
+  # Define strata order
+  strata_order <- c(
+    "Sacramento River Mainstem",
+    "Sacramento River Deep Water Ship Channel",
+    "Cache Slough and Liberty Island",
+    "North and South Forks Mokelumne River",
+    "San Joaquin River upstream of Delta",
+    "South Delta",
+    "Confluence",
+    "Suisun and Honker Bays",
+    "Suisun Marsh and Montezuma Slough",
+    "San Pablo Bay and Carquinez Strait"
+  )
+
+  # Convert vector to factor
+  factor(vec, levels = strata_order)
+}
+
 # Read the stations metadata YAML and convert it into a flat tibble for branching
 read_cwq_stations_meta <- function(yaml_file) {
   yaml_data <- yaml::read_yaml(yaml_file)
@@ -75,5 +144,7 @@ finish_cwq_data <- function(df_data) {
     dplyr::select(station_abbr, date, tidyselect::all_of(wq_meas)) |>
     # Remove rows where all WQ measurements are missing
     dplyr::filter_out(dplyr::if_all(tidyselect::all_of(wq_meas), is.na)) |>
+    # Convert station_abbr to factor using custom station order
+    dplyr::mutate(station_abbr = convert_fct_station_abbr(station_abbr)) |>
     dplyr::arrange(station_abbr, date)
 }
