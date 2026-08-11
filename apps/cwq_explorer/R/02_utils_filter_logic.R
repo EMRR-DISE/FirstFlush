@@ -2,6 +2,9 @@
 # Author: Dave Bosworth
 # Contact: David.Bosworth@water.ca.gov
 
+# Load packages
+library(dplyr)
+
 # Define choices for an input applying order_vec as their display order
 active_ordered_choices <- function(order_vec, active_vals) {
   intersect(order_vec, as.character(unique(active_vals)))
