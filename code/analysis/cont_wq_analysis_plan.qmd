@@ -188,7 +188,10 @@ sf_strata <-
     here("data/processed/spatial/first_flush_spatial_data.gpkg"),
     layer = "design_strata"
   ) |>
-  filter(Stratum != "Out of Bounds")
+  filter(
+    !Stratum %in%
+      c("Out of Bounds", "Napa River", "Central SF Bay", "South SF Bay")
+  )
 
 sf_stations |>
   mapview(label = "station_abbr", layer.name = "Stations", cex = 5) +
