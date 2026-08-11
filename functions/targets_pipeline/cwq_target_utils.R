@@ -75,5 +75,7 @@ finish_cwq_data <- function(df_data) {
     dplyr::select(station_abbr, date, tidyselect::all_of(wq_meas)) |>
     # Remove rows where all WQ measurements are missing
     dplyr::filter_out(dplyr::if_all(tidyselect::all_of(wq_meas), is.na)) |>
+    # Convert station_abbr to factor using custom station order
+    dplyr::mutate(station_abbr = convert_fct_station_abbr(station_abbr)) |>
     dplyr::arrange(station_abbr, date)
 }

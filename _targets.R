@@ -1,7 +1,7 @@
 library(targets)
 library(tarchetypes)
 
-tar_source("code/functions")
+tar_source("functions")
 
 tar_option_set(
   # Default storage format for data frames (highly efficient)
@@ -20,7 +20,7 @@ tar_plan(
   # it into a flat tibble for branching
   tar_file_read(
     cwq_station_metadata_raw,
-    "data/cwq_stations.yml",
+    "config/cwq_stations.yml",
     read_cwq_stations_meta(!!.x)
   ),
   # Group metadata by station, parameter, and data frequency (creates one branch per row

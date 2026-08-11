@@ -22,6 +22,6 @@
         "wstorms"
     ],
     "yaml.schemas": {
-        "data/.cwq-schema.json": "data/cwq_stations.yml"
+        "config/.cwq-schema.json": "config/cwq_stations.yml"
     }
 }
