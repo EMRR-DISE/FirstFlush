@@ -26,8 +26,9 @@ ui <- page_navbar(
 
 # Build server
 server <- function(input, output, session) {
-  # Initialize reactive value to store the previously selected strata
+  # Initialize reactive value to store the previously selected strata and parameter
   prev_strata <- reactiveVal(character(0))
+  prev_param <- reactiveVal(NULL)
 
   # Add debounce to dowy_rng slider
   # Debounced slider value: waits 400ms after the user stops dragging
@@ -96,20 +97,23 @@ server <- function(input, output, session) {
     ls_data_filt_wy()$cwq_data_param |> filter(stratum %in% input$strata)
   })
 
-  # Populate station choices, keeping valid previous selections, and auto-adding stations for
-  # newly selected strata
+  # Populate station choices, keeping valid previous selections, auto-adding stations for
+  # newly selected strata, and resetting selections on parameter change
   observe({
     req(input$strata)
     station_update <- compute_station_updates(
       current_strata = input$strata,
       prev_strata = isolate(prev_strata()),
       current_stations = isolate(input$stations),
+      current_param = input$param,
+      prev_param = isolate(prev_param()),
       df_filt = cwq_data_strata(),
       station_order = station_order
     )
 
     # Update the tracking reactive value for the next event
     prev_strata(as.character(input$strata))
+    prev_param(input$param)
 
     freezeReactiveValue(input, "stations")
     updateSelectizeInput(

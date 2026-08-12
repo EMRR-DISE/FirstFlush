@@ -50,11 +50,14 @@ compute_strata_updates <- function(current_strata, df_filt, strata_order) {
 }
 
 # Calculate updated station choices and selections from df_filt, keeping valid previous selections,
-# and auto-adding stations for newly selected strata
+# auto-adding stations for newly selected strata, and selecting all stations within selected
+# strata when parameter changes
 compute_station_updates <- function(
   current_strata,
   prev_strata,
   current_stations,
+  current_param,
+  prev_param,
   df_filt,
   station_order
 ) {
@@ -63,32 +66,41 @@ compute_station_updates <- function(
     active_vals = df_filt$station_abbr
   )
 
-  added_strata <- setdiff(
-    as.character(current_strata),
-    as.character(prev_strata)
-  )
+  # Detect parameter change
+  param_changed <- !is.null(prev_param) && (current_param != prev_param)
 
-  new_stations <- df_filt |>
-    dplyr::filter(as.character(stratum) %in% added_strata) |>
-    dplyr::pull(station_abbr) |>
-    as.character() |>
-    unique()
+  if (param_changed) {
+    # If parameter changed, select all available stations across active strata
+    selected_stations <- station_choices
+  } else {
+    # Otherwise, preserve existing selections and auto-add stations for new strata
+    added_strata <- setdiff(
+      as.character(current_strata),
+      as.character(prev_strata)
+    )
 
-  valid_existing_stations <- intersect(
-    as.character(current_stations),
-    station_choices
-  )
+    new_stations <- df_filt |>
+      dplyr::filter(as.character(stratum) %in% added_strata) |>
+      dplyr::pull(station_abbr) |>
+      as.character() |>
+      unique()
 
-  combined_stations <- intersect(
-    station_order,
-    union(valid_existing_stations, new_stations)
-  )
+    valid_existing_stations <- intersect(
+      as.character(current_stations),
+      station_choices
+    )
 
-  selected_stations <- preserve_selection(
-    current_sel = combined_stations,
-    valid_choices = station_choices,
-    fallback = station_choices
-  )
+    combined_stations <- intersect(
+      station_order,
+      union(valid_existing_stations, new_stations)
+    )
+
+    selected_stations <- preserve_selection(
+      current_sel = combined_stations,
+      valid_choices = station_choices,
+      fallback = station_choices
+    )
+  }
 
   list(choices = station_choices, selected = selected_stations)
 }
