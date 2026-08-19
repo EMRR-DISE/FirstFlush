@@ -1,4 +1,4 @@
-# Utility functions for converting stations and strata to factors with custom orders used
+# Utility functions for converting CWQ stations and strata to factors with custom orders used
 # throughout this repo
 # Author: Dave Bosworth
 # Contact: David.Bosworth@water.ca.gov
