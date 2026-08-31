@@ -218,7 +218,7 @@ needs_fixing <- longfin_lifestage %>%
 longfin_adults <- longfin_lifestage %>%
   filter(
     Source %in% c("Bay Study", "FMWT", "DJFMP"),
-    (Lifestage == c("Anadromous", "Adult", "Sub-Adult")))
+    (Length >= 80))
 
 longfin_20mmSLS <- longfin_lifestage %>%
   filter(Source %in% c("20mm", "SLS"),
