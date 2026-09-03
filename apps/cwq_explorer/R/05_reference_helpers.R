@@ -12,7 +12,7 @@ build_station_map <- function(sf_strata, sf_stations) {
   strata_pal <- colorFactor(palette = "Set2", domain = sf_strata$Stratum)
 
   leaflet() |>
-    addProviderTiles(providers$CartoDB.Positron) |>
+    addTiles() |>
     addPolygons(
       data = sf_strata,
       group = "Strata",

@@ -142,6 +142,16 @@ ui_tab_reference <- function() {
             )
           )
         ),
+        # Inject CSS to desaturate the default map tiles and make them light gray
+        tags$head(
+          tags$style(HTML(
+            "
+              .leaflet-tile {
+                filter: grayscale(100%) brightness(115%) contrast(95%) !important;
+              }
+            "
+          ))
+        ),
         leafletOutput("station_map", height = "100%")
       ),
       card(
